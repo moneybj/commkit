@@ -47,6 +47,20 @@ export function bindHistory({ onBack, onNewSession, onContinue }) {
       onContinue?.(btn.dataset.id)
     })
   })
+
+  document.querySelectorAll('.history-toggle').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const card = btn.closest('[data-history-card]')
+      const details = card?.querySelector('.history-details')
+      const chevron = card?.querySelector('.history-chevron')
+      if (!details) return
+
+      const isOpen = details.style.display !== 'none'
+      details.style.display = isOpen ? 'none' : 'block'
+      btn.setAttribute('aria-expanded', String(!isOpen))
+      if (chevron) chevron.textContent = isOpen ? '›' : '⌄'
+    })
+  })
 }
 
 function renderHistoryItem(item) {
@@ -58,32 +72,27 @@ function renderHistoryItem(item) {
   const relation = getRelationshipMeta(item)
 
   return `
-    <article style="background:var(--s2);border:1.5px solid var(--border);border-left:4px solid ${relation.color};border-radius:14px;padding:13px 14px;">
-      <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:7px;">
-        <div style="width:34px;height:34px;border-radius:10px;background:${relation.bg};color:${relation.color};display:flex;align-items:center;justify-content:center;flex-shrink:0;">${relation.icon}</div>
-        <div style="flex:1;min-width:0;">
-          <div style="font-size:13px;font-weight:800;color:var(--text);margin-bottom:3px;">${escapeHtml(item.situationTitle || 'Conversation')}</div>
-          <div style="font-size:11px;color:var(--muted);line-height:1.5;">${escapeHtml(formatDate(item.timestamp))} · ${escapeHtml(item.framework || 'Framework applied')}</div>
-        </div>
-        <div style="background:${relation.bg};color:${relation.color};border:1px solid ${relation.border};border-radius:999px;padding:4px 8px;font-size:10px;font-weight:800;white-space:nowrap;">${escapeHtml(relation.label)}</div>
-      </div>
+    <article data-history-card="${escapeAttr(String(item.id))}" style="background:var(--s2);border:1.5px solid var(--border);border-left:4px solid ${relation.color};border-radius:14px;padding:13px 14px;">
+      ${renderHistoryBannerHeader(item, relation, relation.icon)}
       <div style="font-size:12px;color:var(--text2);line-height:1.55;">${escapeHtml(item.situation || 'No situation saved')}</div>
       ${item.recipientLabel ? `<div style="font-size:11px;color:var(--muted);line-height:1.5;margin-top:6px;">Recipient: ${escapeHtml(item.recipientLabel)}</div>` : ''}
       ${renderContinueAction(item)}
       ${renderHistoryContextActions(item)}
-      ${renderSupportingDocsNote(item.supportingDocs)}
-      ${renderHistoryMethod(item.frameworkDetail, item.framework)}
-      ${renderHistoryRefinements(item.refinements)}
-      <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.12em;color:var(--muted);margin:13px 0 8px;">Responses for ${escapeHtml(item.recipientLabel || item.receiver || inferReceiverLabel(item.situation))}</div>
-      ${responses.length ? `
-        <div style="display:flex;flex-direction:column;gap:8px;">
-          ${responses.map(renderHistoryResponse).join('')}
-        </div>
-      ` : `
-        <div style="background:var(--s3);border:1px solid var(--border);border-radius:10px;padding:11px 12px;font-size:11px;color:var(--muted);line-height:1.5;">
-          This older history item only saved the situation summary. New conversations will save the generated responses here.
-        </div>
-      `}
+      <div class="history-details" style="display:none;margin-top:12px;padding-top:12px;border-top:1px solid var(--border);">
+        ${renderSupportingDocsNote(item.supportingDocs)}
+        ${renderHistoryMethod(item.frameworkDetail, item.framework)}
+        ${renderHistoryRefinements(item.refinements)}
+        <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.12em;color:var(--muted);margin:13px 0 8px;">Responses for ${escapeHtml(item.recipientLabel || item.receiver || inferReceiverLabel(item.situation))}</div>
+        ${responses.length ? `
+          <div style="display:flex;flex-direction:column;gap:8px;">
+            ${responses.map(renderHistoryResponse).join('')}
+          </div>
+        ` : `
+          <div style="background:var(--s3);border:1px solid var(--border);border-radius:10px;padding:11px 12px;font-size:11px;color:var(--muted);line-height:1.5;">
+            This older history item only saved the situation summary. New conversations will save the generated responses here.
+          </div>
+        `}
+      </div>
     </article>
   `
 }
@@ -96,27 +105,39 @@ function renderResourceHistoryItem(item) {
   const relation = getRelationshipMeta(item)
 
   return `
-    <article style="background:var(--s2);border:1.5px solid var(--border);border-left:4px solid ${relation.color};border-radius:14px;padding:13px 14px;">
-      <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:7px;">
-        <div style="width:34px;height:34px;border-radius:10px;background:${relation.bg};color:${relation.color};display:flex;align-items:center;justify-content:center;flex-shrink:0;">📄</div>
-        <div style="flex:1;min-width:0;">
-          <div style="font-size:13px;font-weight:800;color:var(--text);margin-bottom:3px;">${escapeHtml(item.situationTitle || brief.title || 'Supporting Brief')}</div>
-          <div style="font-size:11px;color:var(--muted);line-height:1.5;">${escapeHtml(formatDate(item.timestamp))} · ${escapeHtml(item.framework || item.receiver || 'stakeholder')}</div>
-        </div>
-        <div style="background:${relation.bg};color:${relation.color};border:1px solid ${relation.border};border-radius:999px;padding:4px 8px;font-size:10px;font-weight:800;white-space:nowrap;">${escapeHtml(relation.label)}</div>
-      </div>
+    <article data-history-card="${escapeAttr(String(item.id))}" style="background:var(--s2);border:1.5px solid var(--border);border-left:4px solid ${relation.color};border-radius:14px;padding:13px 14px;">
+      ${renderHistoryBannerHeader(item, relation, '📄', brief.title)}
       <div style="font-size:12px;color:var(--text2);line-height:1.55;margin-bottom:12px;">${escapeHtml(item.situation || 'Document brief')}</div>
       ${item.recipientLabel ? `<div style="font-size:11px;color:var(--muted);line-height:1.5;margin:-6px 0 12px;">Recipient: ${escapeHtml(item.recipientLabel)}</div>` : ''}
       ${renderContinueAction(item)}
       ${renderHistoryContextActions(item)}
-      ${renderHistoryMethod(item.frameworkDetail || brief.methodFramework, item.framework)}
-      ${renderHistoryRefinements(item.refinements)}
-
-      ${brief.summary?.length ? renderBriefSection('Executive Summary', summaryText, brief.summary) : ''}
-      ${brief.talkingPoints?.length ? renderBriefSection('Talking Points', talkingText, brief.talkingPoints) : ''}
-      ${brief.presentationOutline?.length ? renderPresentationSection(presentationText, brief.presentationOutline) : ''}
-      ${brief.emailDraft ? renderEmailSection(brief.emailDraft) : ''}
+      <div class="history-details" style="display:none;margin-top:12px;padding-top:12px;border-top:1px solid var(--border);">
+        ${renderHistoryMethod(item.frameworkDetail || brief.methodFramework, item.framework)}
+        ${renderHistoryRefinements(item.refinements)}
+        ${brief.summary?.length ? renderBriefSection('Executive Summary', summaryText, brief.summary) : ''}
+        ${brief.talkingPoints?.length ? renderBriefSection('Talking Points', talkingText, brief.talkingPoints) : ''}
+        ${brief.presentationOutline?.length ? renderPresentationSection(presentationText, brief.presentationOutline) : ''}
+        ${brief.emailDraft ? renderEmailSection(brief.emailDraft) : ''}
+      </div>
     </article>
+  `
+}
+
+function renderHistoryBannerHeader(item, relation, icon, titleOverride = '') {
+  return `
+    <button class="history-toggle" aria-expanded="false" style="width:100%;background:transparent;border:none;padding:0;margin:0 0 7px;text-align:left;font-family:var(--font-body);cursor:pointer;">
+      <div style="display:flex;align-items:flex-start;gap:10px;">
+        <div style="width:34px;height:34px;border-radius:10px;background:${relation.bg};color:${relation.color};display:flex;align-items:center;justify-content:center;flex-shrink:0;">${icon}</div>
+        <div style="flex:1;min-width:0;">
+          <div style="font-size:13px;font-weight:800;color:var(--text);margin-bottom:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(item.situationTitle || titleOverride || 'Conversation')}</div>
+          <div style="font-size:11px;color:var(--muted);line-height:1.5;">${escapeHtml(formatDate(item.timestamp))} · ${escapeHtml(item.framework || item.receiver || 'Framework applied')}</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:7px;flex-shrink:0;">
+          <div style="background:${relation.bg};color:${relation.color};border:1px solid ${relation.border};border-radius:999px;padding:4px 8px;font-size:10px;font-weight:800;white-space:nowrap;">${escapeHtml(relation.label)}</div>
+          <div class="history-chevron" aria-hidden="true" style="width:24px;height:24px;border-radius:50%;background:var(--s3);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;color:var(--accent);font-size:18px;">›</div>
+        </div>
+      </div>
+    </button>
   `
 }
 

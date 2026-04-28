@@ -3,7 +3,7 @@
  * Shows saved conversation summaries from localStorage.
  */
 
-import { copyToClipboard } from '../utils/share.js'
+import { copyToClipboard, openShare } from '../utils/share.js'
 import { showToast } from '../utils/toast.js'
 import { escapeAttr, escapeHtml } from '../utils/escape.js'
 
@@ -35,6 +35,12 @@ export function bindHistory({ onBack, onNewSession }) {
       if (ok) showToast('✓ Copied from history')
     })
   })
+
+  document.querySelectorAll('.history-share').forEach(btn => {
+    btn.addEventListener('click', () => {
+      openShare(btn.dataset.text || '')
+    })
+  })
 }
 
 function renderHistoryItem(item) {
@@ -57,6 +63,7 @@ function renderHistoryItem(item) {
       </div>
       <div style="font-size:12px;color:var(--text2);line-height:1.55;">${escapeHtml(item.situation || 'No situation saved')}</div>
       ${item.recipientLabel ? `<div style="font-size:11px;color:var(--muted);line-height:1.5;margin-top:6px;">Recipient: ${escapeHtml(item.recipientLabel)}</div>` : ''}
+      ${renderHistoryContextActions(item)}
       ${renderSupportingDocsNote(item.supportingDocs)}
       ${renderHistoryMethod(item.frameworkDetail, item.framework)}
       ${renderHistoryRefinements(item.refinements)}
@@ -93,6 +100,7 @@ function renderResourceHistoryItem(item) {
       </div>
       <div style="font-size:12px;color:var(--text2);line-height:1.55;margin-bottom:12px;">${escapeHtml(item.situation || 'Document brief')}</div>
       ${item.recipientLabel ? `<div style="font-size:11px;color:var(--muted);line-height:1.5;margin:-6px 0 12px;">Recipient: ${escapeHtml(item.recipientLabel)}</div>` : ''}
+      ${renderHistoryContextActions(item)}
       ${renderHistoryMethod(item.frameworkDetail || brief.methodFramework, item.framework)}
       ${renderHistoryRefinements(item.refinements)}
 
@@ -159,6 +167,46 @@ function renderSupportingDocsNote(supportingDocs) {
       <strong style="color:var(--blue);">Supporting docs used:</strong> ${escapeHtml(parts.join(' + '))}
     </div>
   `
+}
+
+function renderHistoryContextActions(item) {
+  const context = buildHistoryContextPack(item, false)
+  const safe = buildHistoryContextPack(item, true)
+
+  return `
+    <div style="display:flex;gap:7px;flex-wrap:wrap;margin-top:10px;">
+      <button class="btn history-copy" data-text="${escapeAttr(context)}" style="font-size:11px;padding:8px 10px;">Copy context</button>
+      <button class="btn history-share" data-text="${escapeAttr(context)}" style="font-size:11px;padding:8px 10px;">Share</button>
+      <button class="btn history-copy" data-text="${escapeAttr(safe)}" style="font-size:11px;padding:8px 10px;">Stakeholder-safe</button>
+    </div>
+  `
+}
+
+function buildHistoryContextPack(item, stakeholderSafe) {
+  const responses = Array.isArray(item.responses) ? item.responses : []
+  const preferred = responses.find(response => response.label === item.versionUsed) || responses[1] || responses[0]
+  const brief = item.resourceBrief || {}
+  const briefText = [
+    brief.summary?.length ? listToText('Executive Summary', brief.summary) : '',
+    brief.talkingPoints?.length ? listToText('Talking Points', brief.talkingPoints) : '',
+    brief.emailDraft ? `Email Draft\n${brief.emailDraft}` : '',
+  ].filter(Boolean).join('\n\n')
+
+  return [
+    stakeholderSafe ? 'CommKit Stakeholder Summary' : 'CommKit Context Pack',
+    `Recipient: ${item.recipientLabel || item.receiver || 'Not specified'}`,
+    `Relationship: ${getRelationshipMeta(item).label}`,
+    item.threadTitle ? `Thread: ${item.threadTitle}` : '',
+    `Topic: ${item.situationTitle || item.situation || 'Conversation'}`,
+    '',
+    'Situation:',
+    item.situation || '',
+    '',
+    stakeholderSafe ? '' : item.framework ? `Model/framework: ${item.framework}` : '',
+    preferred?.text ? `${stakeholderSafe ? 'Recommended message' : 'Selected response'}:\n${preferred.text}` : '',
+    preferred?.emailText ? `Email option:\n${preferred.emailText}` : '',
+    briefText,
+  ].filter(line => line !== '').join('\n')
 }
 
 function renderBriefSection(title, copyText, items) {

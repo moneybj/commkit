@@ -11,7 +11,7 @@ import { showToast } from '../utils/toast.js'
 
 // ── Render ────────────────────────────────────
 
-export function renderResult({ result, situationLabel, profile, sessionData }) {
+export function renderResult({ result, situationLabel, profile, sessionData, contextPack = '', stakeholderContextPack = '' }) {
   const layerInfo = getLayerInfo()
   const signal = analyseSignals({ ...result, inputMethod: sessionData?.inputMethod })
 
@@ -34,6 +34,7 @@ export function renderResult({ result, situationLabel, profile, sessionData }) {
         <div style="display:flex;flex-wrap:wrap;gap:6px;">
           ${profile?.style ? `<div class="tag style" style="cursor:default;">${escapeHtml(profile.style)}</div>` : ''}
           ${sessionData?.relationship ? `<div class="tag strength" style="cursor:default;">For: ${escapeHtml(sessionData.recipientLabel || getRelationshipLabel(sessionData.relationship))}</div>` : ''}
+          ${sessionData?.conversationThread ? `<div class="tag growth" style="cursor:default;">Thread: ${escapeHtml(sessionData.conversationThread.title || 'Continued')}</div>` : ''}
           ${sessionData?.inputMethod === 'voice' ? `<div class="tag strength" style="cursor:default;">🎤 Voice input</div>` : `<div class="tag style" style="cursor:default;">✏️ Typed</div>`}
           ${hasSupportingDocs(sessionData?.supportingDocs) ? `<div class="tag growth" style="cursor:default;">📎 Supporting docs</div>` : ''}
           <div class="tag growth" style="cursor:default;">📍 Session ${profile?.sessionCount || 1}</div>
@@ -101,6 +102,8 @@ export function renderResult({ result, situationLabel, profile, sessionData }) {
       ` : ''}
 
       ${renderRefinementCard(result)}
+
+      ${renderContextPackCard(contextPack, stakeholderContextPack)}
 
       <!-- Next steps -->
       ${renderNextActions()}
@@ -396,6 +399,21 @@ function renderNextActions() {
   `
 }
 
+function renderContextPackCard(contextPack, stakeholderContextPack) {
+  return `
+    <div style="margin:6px 16px 14px;background:var(--s2);border:1.5px solid var(--border);border-top:2px solid var(--green);border-radius:16px;padding:14px;">
+      <div class="section-label" style="margin-bottom:8px;">Context pack</div>
+      <div style="font-family:var(--font-display);font-size:20px;font-weight:700;color:var(--text);line-height:1.14;margin-bottom:7px;">Move this conversation anywhere.</div>
+      <div style="font-size:12px;color:var(--muted);line-height:1.6;margin-bottom:12px;">Copy the full context for yourself, or a cleaner stakeholder-safe version without coaching notes.</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+        <button class="btn context-copy" data-text="${escapeAttr(contextPack)}" style="font-size:12px;">Copy context</button>
+        <button class="btn context-share" data-text="${escapeAttr(contextPack)}" style="font-size:12px;">Share context</button>
+      </div>
+      <button class="btn context-copy" data-text="${escapeAttr(stakeholderContextPack)}" style="width:100%;font-size:12px;margin-top:8px;">Copy stakeholder-safe brief</button>
+    </div>
+  `
+}
+
 function renderFeedbackCard() {
   return `
     <div style="margin:0 16px 14px;background:var(--s2);border:1.5px solid var(--border);border-radius:16px;overflow:hidden;">
@@ -513,6 +531,17 @@ export function bindResult({ onBack, onNewSession, onHome, onVersionUsed, onForm
   })
 
   document.querySelectorAll('.format-share').forEach(btn => {
+    btn.addEventListener('click', () => openShare(btn.dataset.text || ''))
+  })
+
+  document.querySelectorAll('.context-copy').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const ok = await copyToClipboard(btn.dataset.text || '')
+      if (ok) showToast('✓ Context copied')
+    })
+  })
+
+  document.querySelectorAll('.context-share').forEach(btn => {
     btn.addEventListener('click', () => openShare(btn.dataset.text || ''))
   })
 

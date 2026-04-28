@@ -6,7 +6,7 @@
 
 import './style.css'
 
-import { clearEncryptedStorage, getProfile, hasProfile, incrementSession, getSessionCount, getTags, addTag, removeTag, getHistory, addToHistory, updateHistoryEntry, makeRecipientKey, getRecipientMemory, saveRecipientMemory, isEncryptionConfigured, isEncryptionUnlocked, setupLocalEncryption, unlockLocalEncryption, isInstalled, markInstalled, isNudgeDismissed, dismissNudge, isIosNudgeShown, markIosNudgeShown } from './utils/storage.js'
+import { clearEncryptedStorage, getProfile, hasProfile, incrementSession, getSessionCount, getTags, addTag, removeTag, getHistory, addToHistory, updateHistoryEntry, makeRecipientKey, getRecipientMemory, saveRecipientMemory, upsertConversationThread, isEncryptionConfigured, isEncryptionUnlocked, setupLocalEncryption, unlockLocalEncryption, isInstalled, markInstalled, isNudgeDismissed, dismissNudge, isIosNudgeShown, markIosNudgeShown } from './utils/storage.js'
 import { initToast, showToast } from './utils/toast.js'
 import { initShare } from './utils/share.js'
 import { renderPrivacyLock, bindPrivacyLock } from './screens/privacyLock.js'
@@ -38,6 +38,7 @@ const appState = {
     recipientLabel: '',
     recipientKey: '',
     recipientMemory: null,
+    conversationThread: null,
     supportingDocs: null,
     inputMethod: 'voice',
   },
@@ -215,10 +216,10 @@ function showSession() {
   appState.currentScreen = 'session'
 }
 
-async function handleGenerate({ situation, situationText, relationship, recipientLabel, supportingDocs, inputMethod }) {
+async function handleGenerate({ situation, situationText, relationship, recipientLabel, supportingDocs, conversationThread, inputMethod }) {
   const recipientKey = makeRecipientKey(relationship, recipientLabel)
   const recipientMemory = getRecipientMemory(recipientKey)
-  appState.sessionData = { situation, situationText, relationship, recipientLabel, recipientKey, recipientMemory, supportingDocs, inputMethod }
+  appState.sessionData = { situation, situationText, relationship, recipientLabel, recipientKey, recipientMemory, conversationThread, supportingDocs, inputMethod }
   appState.currentSelectedResponseLabel = ''
   const profile = getProfile()
   const sessionCount = getSessionCount() + 1
@@ -230,6 +231,7 @@ async function handleGenerate({ situation, situationText, relationship, recipien
     relationship,
     recipientLabel,
     recipientMemory,
+    conversationThread,
     supportingDocs,
     sessionCount,
     inputMethod,
@@ -266,6 +268,8 @@ async function handleGenerate({ situation, situationText, relationship, recipien
       recipientLabel,
       recipientKey,
       relationship: relationship || getRelationshipCategory(situationText || situation),
+      threadId: conversationThread?.id || null,
+      threadTitle: conversationThread?.title || null,
       supportingDocs: getSupportingDocsSummary(supportingDocs),
       responses: getHistoryResponses(resultWithThread),
       refinements: [],
@@ -279,9 +283,26 @@ async function handleGenerate({ situation, situationText, relationship, recipien
       result: resultWithThread,
       profile,
     }))
+    const updatedThread = upsertConversationThread(buildConversationThread({
+      current: conversationThread,
+      recipientKey,
+      recipientLabel,
+      relationship,
+      situation: situationText || situation,
+      result: resultWithThread,
+      profile,
+    }))[0]
 
     appState.currentHistoryId = history[0]?.id || null
     appState.currentResult = resultWithThread
+    appState.sessionData.conversationThread = updatedThread
+    appState.currentProfileData = { ...profileData, conversationThread: updatedThread }
+    if (appState.currentHistoryId) {
+      updateHistoryEntry(appState.currentHistoryId, {
+        threadId: updatedThread?.id || null,
+        threadTitle: updatedThread?.title || null,
+      })
+    }
     appState.profile = getProfile()
     showResult(resultWithThread, situation)
     maybeShowInstallPrompt(completedSessions)
@@ -299,6 +320,18 @@ function showResult(result, situationLabel) {
     situationLabel,
     profile: getProfile(),
     sessionData: appState.sessionData,
+    contextPack: buildContextPack({
+      result,
+      sessionData: appState.sessionData,
+      profile: getProfile(),
+      stakeholderSafe: false,
+    }),
+    stakeholderContextPack: buildContextPack({
+      result,
+      sessionData: appState.sessionData,
+      profile: getProfile(),
+      stakeholderSafe: true,
+    }),
   })
   bindResult({
     onBack: showSession,
@@ -320,6 +353,17 @@ function showResult(result, situationLabel) {
         profile: getProfile(),
         selectedLabel: versionLabel,
       }))
+      const updatedThread = upsertConversationThread(buildConversationThread({
+        current: appState.sessionData.conversationThread,
+        recipientKey: appState.sessionData.recipientKey,
+        recipientLabel: appState.sessionData.recipientLabel,
+        relationship: appState.sessionData.relationship,
+        situation: appState.sessionData.situationText || appState.sessionData.situation,
+        result: appState.currentResult,
+        profile: getProfile(),
+        selectedLabel: versionLabel,
+      }))[0]
+      appState.sessionData.conversationThread = updatedThread
       showToast('✓ Signal recorded')
     },
     onFormatChosen: (format) => {
@@ -383,6 +427,18 @@ async function handleResponseRefine(instruction) {
       profile: getProfile(),
       selectedLabel: appState.currentSelectedResponseLabel,
     }))
+    const updatedThread = upsertConversationThread(buildConversationThread({
+      current: appState.sessionData.conversationThread,
+      recipientKey: appState.sessionData.recipientKey,
+      recipientLabel: appState.sessionData.recipientLabel,
+      relationship: appState.sessionData.relationship,
+      situation: appState.sessionData.situationText || appState.sessionData.situation,
+      result: updated,
+      profile: getProfile(),
+      selectedLabel: appState.currentSelectedResponseLabel,
+    }))[0]
+    appState.sessionData.conversationThread = updatedThread
+    appState.currentProfileData = { ...(appState.currentProfileData || {}), conversationThread: updatedThread }
     showToast('✓ Responses refined')
     showResult(updated, appState.sessionData.situation)
   } catch (err) {
@@ -611,6 +667,68 @@ function buildRecipientMemory({ current = null, recipientKey, recipientLabel, re
     lastNextStep: compactText(lastNextStep || current?.lastNextStep || '', 120),
     interactionCount: (current?.interactionCount || 0) + 1,
   }
+}
+
+function buildConversationThread({ current = null, recipientKey, recipientLabel, relationship, situation, result, profile, selectedLabel = '', source = 'conversation' }) {
+  const responses = getHistoryResponses(result)
+  const selected = responses.find(response => response.label === selectedLabel) || responses[1] || responses[0]
+  const title = current?.title || result?.situationTitle || result?.title || compactText(situation, 64) || 'Conversation thread'
+  const openQuestions = Array.isArray(result?.qaItems)
+    ? result.qaItems.map(item => item.question).filter(Boolean).slice(0, 2)
+    : current?.openQuestions || []
+
+  return {
+    id: current?.id || `thread_${Date.now()}`,
+    recipientKey,
+    recipientLabel,
+    relationship,
+    title: compactText(title, 80),
+    topicTags: Array.from(new Set([...(current?.topicTags || []), compactText(result?.situationTitle || result?.title || situation, 36)].filter(Boolean))).slice(-5),
+    summary: compactText(`Recent topic: ${result?.detectedSummary || result?.summary?.[0] || situation}`, 220),
+    lastResponse: compactText(selected?.text || selected?.shortText || result?.refinementNote || '', 180),
+    openQuestions,
+    lastNextStep: compactText(getMemoryNextStep(result, source) || current?.lastNextStep || '', 140),
+    tonePreference: compactText(selected?.tone || selectedLabel || profile?.style || current?.tonePreference || '', 80),
+    updatedAt: Date.now(),
+  }
+}
+
+function buildContextPack({ result, sessionData, profile, stakeholderSafe = false }) {
+  const responses = getHistoryResponses(result)
+  const selected = responses.find(response => response.label === appState.currentSelectedResponseLabel) || responses[1] || responses[0]
+  const thread = sessionData?.conversationThread
+  const supportingDocs = getSupportingDocsSummary(sessionData?.supportingDocs || {})
+  const qaText = Array.isArray(result?.qaItems) && result.qaItems.length
+    ? result.qaItems.slice(0, 3).map(item => `Q: ${item.question}\nA: ${item.answer}`).join('\n')
+    : ''
+
+  const sections = [
+    stakeholderSafe ? 'CommKit Stakeholder Summary' : 'CommKit Context Pack',
+    '',
+    `Recipient: ${sessionData?.recipientLabel || 'Not specified'}`,
+    `Relationship: ${getRelationshipLabel(sessionData?.relationship, 'Not specified')}`,
+    thread?.title ? `Thread: ${thread.title}` : '',
+    `Topic: ${result?.situationTitle || sessionData?.situationText || sessionData?.situation || 'Conversation'}`,
+    '',
+    'Situation:',
+    sessionData?.situationText || sessionData?.situation || result?.detectedSummary || '',
+    '',
+    supportingDocs ? `Supporting context: ${supportingDocs.fileCount || 0} file(s)${supportingDocs.hasPastedNotes ? ' + pasted notes' : ''}` : '',
+    stakeholderSafe ? '' : `Profile style: ${profile?.style || 'Balanced'}`,
+    stakeholderSafe ? '' : result?.framework?.name ? `Model/framework: ${result.framework.name}` : '',
+    '',
+    stakeholderSafe ? 'Recommended message:' : 'Selected response:',
+    selected?.text || result?.responses?.[0]?.text || '',
+    '',
+    selected?.emailText ? `Email option:\n${selected.emailText}` : '',
+    '',
+    stakeholderSafe ? '' : result?.coachingTip ? `Coaching note:\n${result.coachingTip}` : '',
+    stakeholderSafe ? '' : qaText ? `Questions to expect:\n${qaText}` : '',
+    '',
+    `Next step: ${thread?.lastNextStep || getMemoryNextStep(result, 'conversation') || 'Follow up clearly.'}`,
+  ]
+
+  return sections.filter(line => line !== '').join('\n')
 }
 
 function getMemoryNextStep(result, source) {

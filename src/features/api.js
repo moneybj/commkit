@@ -7,9 +7,10 @@
 /**
  * Build the structured prompt for Claude
  */
-export function buildPrompt({ role, style, situation, relationship, recipientLabel, recipientMemory, supportingDocs = {}, sessionCount, inputMethod }) {
+export function buildPrompt({ role, style, situation, relationship, recipientLabel, recipientMemory, conversationThread, supportingDocs = {}, sessionCount, inputMethod }) {
   const receiverContext = getReceiverContext({ situation, relationship })
   const memoryBlock = formatRecipientMemory(recipientMemory)
+  const threadBlock = formatConversationThread(conversationThread)
   const docsBlock = formatSupportingDocs(supportingDocs)
 
   return `You are CommKit, a communication coach for professionals at every level. Generate responses for this exact situation.
@@ -24,6 +25,7 @@ USER PROFILE:
 - Input method: ${inputMethod === 'voice' ? 'Spoken (voice transcription)' : 'Typed'}
 - Session number: ${sessionCount}
 ${memoryBlock ? `\nRECIPIENT MEMORY (use lightly for continuity, do not overfit):\n${memoryBlock}` : ''}
+${threadBlock ? `\nCONVERSATION THREAD CONTEXT (continue only if relevant):\n${threadBlock}` : ''}
 ${docsBlock ? `\nSUPPORTING DOCS (use as context for the response, do not summarize unless needed):\n${docsBlock}` : ''}
 
 Generate a valid JSON object. Return ONLY raw JSON — no markdown fences, no preamble, no explanation.
@@ -88,7 +90,9 @@ Q&A RULES:
 - If the likely receiver is the user's manager, make the questions sound like a manager: priorities, readiness, scope, timing, expectations, support.
 - If the likely receiver is a direct report or teammate, make the questions sound like that person: fairness, clarity, impact, next steps.
 - If recipient memory is present, add relational continuity without mentioning private history directly unless it is relevant.
+- If conversation thread context is present, continue the same topic and avoid repeating old setup unless needed.
 - If supporting docs are present, use them to make the response more specific, but keep the answer conversational.
+- If the user's style is Light Humor, use only gentle, low-risk warmth. Do NOT use humor for safety, layoffs, compliance, quality failures, harassment, grief, medical risk, discipline, or high-conflict conversations; use warm human clarity instead.
 - Answers should be words the user can say back immediately.`
 }
 
@@ -221,6 +225,7 @@ USER PROFILE:
 - Relationship / recipient type: ${getRelationshipLabel(profileData.relationship)}
 - Input method: ${profileData.inputMethod === 'voice' ? 'Spoken' : 'Typed'}
 ${profileData.recipientMemory ? `\nRECIPIENT MEMORY:\n${formatRecipientMemory(profileData.recipientMemory)}` : ''}
+${profileData.conversationThread ? `\nCONVERSATION THREAD CONTEXT:\n${formatConversationThread(profileData.conversationThread)}` : ''}
 
 CURRENT RESPONSE JSON:
 ${safeJsonForPrompt(currentResult, 4600)}
@@ -317,6 +322,21 @@ function formatRecipientMemory(memory) {
   ].filter(Boolean)
 
   return lines.slice(0, 4).join('\n')
+}
+
+function formatConversationThread(thread) {
+  if (!thread) return ''
+
+  const lines = [
+    thread.title ? `- Thread: ${thread.title}` : '',
+    thread.summary ? `- Running summary: ${thread.summary}` : '',
+    thread.lastResponse ? `- Last response used: ${thread.lastResponse}` : '',
+    thread.lastNextStep ? `- Last next step: ${thread.lastNextStep}` : '',
+    thread.tonePreference ? `- Tone that worked: ${thread.tonePreference}` : '',
+    Array.isArray(thread.openQuestions) && thread.openQuestions.length ? `- Open questions: ${thread.openQuestions.slice(0, 2).join(' | ')}` : '',
+  ].filter(Boolean)
+
+  return lines.slice(0, 6).join('\n')
 }
 
 function formatSupportingDocs(supportingDocs = {}) {

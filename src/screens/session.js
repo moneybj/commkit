@@ -6,7 +6,7 @@
  */
 
 import { VoiceInput } from '../features/voice.js'
-import { saveProfile } from '../utils/storage.js'
+import { getThreadsForRecipient, makeRecipientKey, saveProfile } from '../utils/storage.js'
 import { escapeAttr, escapeHtml } from '../utils/escape.js'
 
 const SITUATIONS = [
@@ -23,6 +23,7 @@ const STYLES = [
   { key: 'Warm',      emoji: '🤝', desc: 'Lead with relationship. Build trust.',         cls: 'c2' },
   { key: 'Careful',   emoji: '📋', desc: 'Think before speaking. Get it right.',        cls: 'c3' },
   { key: 'Energetic', emoji: '⚡', desc: 'Bring energy. People feel your presence.',    cls: 'c4' },
+  { key: 'Light Humor', emoji: '🙂', desc: 'Human and disarming when the stakes allow.', cls: 'c5' },
 ]
 
 const RELATIONSHIPS = [
@@ -46,9 +47,11 @@ let sessionState = {
   situation: '',
   situationText: '',
   supportingDocs: {
+    manualText: '',
     documentText: '',
     attachments: [],
   },
+  conversationThread: null,
   inputMethod: 'voice',
   tab: 'voice',
 }
@@ -78,6 +81,7 @@ export function renderSession({ profile }) {
         ${!hasProfile ? renderStyleSection() : ''}
 
         ${renderRelationshipSection()}
+        ${renderThreadSection()}
 
         <!-- Situation grid -->
         <div class="section-label" style="margin-top:${hasProfile ? '0' : '4px'};">Your situation</div>
@@ -174,6 +178,19 @@ function renderSupportingDocsSection() {
       <input id="supportingCamera" type="file" accept="image/*" capture="environment" multiple style="width:100%;font-size:12px;color:var(--muted);margin-bottom:10px;">
       <div id="supportingFileName" style="font-size:11px;color:var(--green);line-height:1.5;margin-bottom:10px;display:none;"></div>
       <textarea id="supportingText" style="background:var(--s3);border:1.5px solid var(--border);border-radius:10px;padding:11px;min-height:74px;" placeholder="Paste key notes, findings, previous message, or details from a document..."></textarea>
+      <div style="display:flex;gap:8px;margin-top:8px;">
+        <button id="supportingClearNotes" class="btn" style="flex:1;font-size:11px;padding:8px 10px;" disabled>Clear notes</button>
+        <button id="supportingClearAll" class="btn" style="flex:1;font-size:11px;padding:8px 10px;" disabled>Clear all docs</button>
+      </div>
+    </section>
+  `
+}
+
+function renderThreadSection() {
+  return `
+    <section id="threadSection" style="display:none;background:var(--s2);border:1.5px solid var(--border);border-radius:14px;padding:13px 14px;margin-bottom:16px;">
+      <div class="section-label" style="margin-bottom:8px;">Conversation thread</div>
+      <div id="threadChoices" style="display:flex;flex-direction:column;gap:8px;"></div>
     </section>
   `
 }
@@ -202,7 +219,7 @@ function renderRoleSection() {
 }
 
 function renderStyleSection() {
-  const colors = ['var(--accent)', 'var(--green)', 'var(--blue)', 'var(--gold)']
+  const colors = ['var(--accent)', 'var(--green)', 'var(--blue)', 'var(--gold)', 'var(--rose)']
   return `
     <div style="margin-bottom:20px;">
       <div class="section-label">Your communication style</div>
@@ -254,9 +271,11 @@ export function bindSession({ profile, onBack, onGenerate }) {
     situation: '',
     situationText: '',
     supportingDocs: {
+      manualText: '',
       documentText: '',
       attachments: [],
     },
+    conversationThread: null,
     inputMethod: 'voice',
     tab: 'voice',
   }
@@ -321,12 +340,14 @@ export function bindSession({ profile, onBack, onGenerate }) {
       chip.style.color = 'var(--accent)'
       chip.style.background = 'var(--accent-dim)'
       sessionState.relationship = chip.dataset.relationship
+      updateThreadChoices()
       checkCta()
     })
   })
 
   document.getElementById('recipientLabel')?.addEventListener('input', (event) => {
     sessionState.recipientLabel = event.target.value.trim()
+    updateThreadChoices()
     checkCta()
   })
 
@@ -372,15 +393,47 @@ export function bindSession({ profile, onBack, onGenerate }) {
   })
 
   document.getElementById('supportingText')?.addEventListener('input', (event) => {
-    sessionState.supportingDocs.documentText = event.target.value.trim()
+    sessionState.supportingDocs.manualText = event.target.value.trim()
+    syncSupportingDocumentText()
+    updateSupportingControls()
   })
 
   document.getElementById('supportingFile')?.addEventListener('change', async (event) => {
     await handleSupportingFiles(event.target.files)
+    event.target.value = ''
   })
 
   document.getElementById('supportingCamera')?.addEventListener('change', async (event) => {
     await handleSupportingFiles(event.target.files)
+    event.target.value = ''
+  })
+
+  document.getElementById('supportingFileName')?.addEventListener('click', (event) => {
+    const button = event.target.closest('.supporting-remove')
+    if (!button) return
+    sessionState.supportingDocs.attachments = sessionState.supportingDocs.attachments.filter(file => file.id !== button.dataset.id)
+    syncSupportingDocumentText()
+    renderSupportingAttachmentList()
+  })
+
+  document.getElementById('supportingClearNotes')?.addEventListener('click', () => {
+    sessionState.supportingDocs.manualText = ''
+    const textarea = document.getElementById('supportingText')
+    if (textarea) textarea.value = ''
+    syncSupportingDocumentText()
+    updateSupportingControls()
+  })
+
+  document.getElementById('supportingClearAll')?.addEventListener('click', () => {
+    sessionState.supportingDocs = {
+      manualText: '',
+      documentText: '',
+      attachments: [],
+    }
+    const textarea = document.getElementById('supportingText')
+    if (textarea) textarea.value = ''
+    syncSupportingDocumentText()
+    renderSupportingAttachmentList()
   })
 
   // Voice input
@@ -395,6 +448,7 @@ export function bindSession({ profile, onBack, onGenerate }) {
         relationship: sessionState.relationship,
         recipientLabel: sessionState.recipientLabel,
         supportingDocs: sessionState.supportingDocs,
+        conversationThread: sessionState.conversationThread,
         inputMethod:  sessionState.inputMethod,
       })
     }
@@ -408,16 +462,16 @@ async function handleSupportingFiles(fileList) {
   const files = Array.from(fileList || [])
   if (!files.length) return
 
-  const textarea = document.getElementById('supportingText')
-  const fileName = document.getElementById('supportingFileName')
-
   for (const file of files) {
     if (isTextFile(file)) {
       const text = await file.text()
-      const nextText = `${textarea?.value ? `${textarea.value}\n\n` : ''}--- ${file.name} ---\n${text}`
-      if (textarea) textarea.value = nextText
-      sessionState.supportingDocs.documentText = nextText.trim()
-      sessionState.supportingDocs.attachments.push({ name: file.name, mediaType: file.type || 'text/plain', kind: 'text' })
+      sessionState.supportingDocs.attachments.push({
+        id: makeAttachmentId(),
+        name: file.name,
+        mediaType: file.type || 'text/plain',
+        kind: 'text',
+        text,
+      })
       continue
     }
 
@@ -427,6 +481,7 @@ async function handleSupportingFiles(fileList) {
     }
 
     sessionState.supportingDocs.attachments.push({
+      id: makeAttachmentId(),
       name: file.name,
       mediaType: file.type || 'application/octet-stream',
       kind: 'unsupported',
@@ -434,12 +489,8 @@ async function handleSupportingFiles(fileList) {
     })
   }
 
-  if (fileName) {
-    fileName.innerHTML = sessionState.supportingDocs.attachments
-      .map(file => `<div>${escapeHtml(file.kind === 'unsupported' ? 'Needs pasted text/PDF' : 'Attached')}: ${escapeHtml(file.name)}</div>`)
-      .join('')
-    fileName.style.display = 'block'
-  }
+  syncSupportingDocumentText()
+  renderSupportingAttachmentList()
 }
 
 function isTextFile(file) {
@@ -456,11 +507,111 @@ async function createAttachment(file) {
   const [, base64 = ''] = dataUrl.split(',')
 
   return {
+    id: makeAttachmentId(),
     name: file.name,
     mediaType: attachmentFile.type || file.type || 'application/octet-stream',
     kind: attachmentFile.type.startsWith('image/') ? 'image' : 'document',
     data: base64,
   }
+}
+
+function renderSupportingAttachmentList() {
+  const fileName = document.getElementById('supportingFileName')
+  const attachments = sessionState.supportingDocs.attachments || []
+
+  if (!fileName) return
+
+  if (!attachments.length) {
+    fileName.innerHTML = ''
+    fileName.style.display = 'none'
+    updateSupportingControls()
+    return
+  }
+
+  fileName.innerHTML = attachments.map(file => {
+    const status = file.kind === 'unsupported'
+      ? 'Needs pasted text/PDF'
+      : file.kind === 'text' ? 'Text loaded' : 'Attached'
+    const color = file.kind === 'unsupported' ? 'var(--gold)' : 'var(--green)'
+    return `
+      <div style="display:flex;align-items:center;gap:8px;background:var(--s3);border:1px solid var(--border);border-radius:10px;padding:8px 9px;margin-bottom:6px;">
+        <span style="flex:1;min-width:0;color:${color};overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(status)}: ${escapeHtml(file.name)}</span>
+        <button class="supporting-remove" data-id="${escapeAttr(file.id)}" style="background:transparent;border:none;color:var(--muted);font-size:11px;font-weight:800;cursor:pointer;">Remove</button>
+      </div>
+    `
+  }).join('')
+  fileName.style.display = 'block'
+  updateSupportingControls()
+}
+
+function syncSupportingDocumentText() {
+  const manual = sessionState.supportingDocs.manualText || ''
+  const textAttachments = (sessionState.supportingDocs.attachments || [])
+    .filter(file => file.kind === 'text' && file.text)
+    .map(file => `--- ${file.name} ---\n${file.text}`)
+
+  sessionState.supportingDocs.documentText = [manual, ...textAttachments]
+    .map(value => String(value || '').trim())
+    .filter(Boolean)
+    .join('\n\n')
+}
+
+function updateSupportingControls() {
+  const hasNotes = !!String(sessionState.supportingDocs.manualText || '').trim()
+  const hasAttachments = (sessionState.supportingDocs.attachments || []).length > 0
+  const clearNotes = document.getElementById('supportingClearNotes')
+  const clearAll = document.getElementById('supportingClearAll')
+
+  if (clearNotes) clearNotes.disabled = !hasNotes
+  if (clearAll) clearAll.disabled = !(hasNotes || hasAttachments)
+}
+
+function updateThreadChoices() {
+  const section = document.getElementById('threadSection')
+  const choices = document.getElementById('threadChoices')
+  const ready = sessionState.relationship && sessionState.recipientLabel.length >= 2
+
+  sessionState.conversationThread = null
+
+  if (!section || !choices) return
+  if (!ready) {
+    section.style.display = 'none'
+    choices.innerHTML = ''
+    return
+  }
+
+  const recipientKey = makeRecipientKey(sessionState.relationship, sessionState.recipientLabel)
+  const threads = getThreadsForRecipient(recipientKey).slice(0, 3)
+  section.style.display = 'block'
+  choices.innerHTML = [
+    renderThreadChoice(null, 'Start new thread', 'Begin a separate context for this topic.', true),
+    ...threads.map(thread => renderThreadChoice(thread.id, thread.title || 'Recent thread', thread.summary || thread.lastNextStep || 'Continue from recent context.', false)),
+  ].join('')
+
+  choices.querySelectorAll('.thread-choice').forEach(choice => {
+    choice.addEventListener('click', () => {
+      choices.querySelectorAll('.thread-choice').forEach(item => {
+        item.style.borderColor = 'var(--border)'
+        item.style.background = 'var(--s3)'
+      })
+      choice.style.borderColor = 'var(--blue)'
+      choice.style.background = 'var(--blue-dim)'
+      sessionState.conversationThread = threads.find(thread => thread.id === choice.dataset.threadId) || null
+    })
+  })
+}
+
+function renderThreadChoice(id, title, description, selected) {
+  return `
+    <button class="thread-choice" data-thread-id="${escapeAttr(id || '')}" style="width:100%;text-align:left;background:${selected ? 'var(--blue-dim)' : 'var(--s3)'};border:1.5px solid ${selected ? 'var(--blue)' : 'var(--border)'};border-radius:11px;padding:10px 11px;cursor:pointer;font-family:var(--font-body);">
+      <div style="font-size:12px;font-weight:800;color:var(--text);margin-bottom:2px;">${escapeHtml(title)}</div>
+      <div style="font-size:11px;color:var(--muted);line-height:1.45;">${escapeHtml(description)}</div>
+    </button>
+  `
+}
+
+function makeAttachmentId() {
+  return `att_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
 }
 
 function fileToDataUrl(file) {

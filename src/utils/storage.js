@@ -11,6 +11,7 @@ const KEYS = {
   SESSIONS:    'ck_sessions',
   HISTORY:     'ck_history',
   RECIPIENTS:  'ck_recipient_memory',
+  THREADS:     'ck_conversation_threads',
   INSTALLED:   'ck_installed',
   NUDGE_SHOWN: 'ck_install_dismissed',
   IOS_NUDGE:   'ck_ios_nudge_shown',
@@ -242,6 +243,8 @@ export function addToHistory(entry) {
         recipientLabel: entry.recipientLabel || entry.receiver || null,
         recipientKey: entry.recipientKey || null,
         relationship: entry.relationship || null,
+        threadId: entry.threadId || null,
+        threadTitle: entry.threadTitle || null,
         supportingDocs: entry.supportingDocs || null,
         responses: entry.responses || [],
         resourceBrief: entry.resourceBrief || null,
@@ -315,6 +318,49 @@ export function saveRecipientMemory(memory) {
   const capped = Object.fromEntries(entries)
   writeRaw(KEYS.RECIPIENTS, JSON.stringify(capped))
   return capped
+}
+
+// ── Conversation threads ───────────────────────
+
+export function getConversationThreads() {
+  try {
+    const raw = readRaw(KEYS.THREADS)
+    return raw ? JSON.parse(raw) : []
+  } catch {
+    return []
+  }
+}
+
+export function getThreadsForRecipient(recipientKey) {
+  if (!recipientKey) return []
+
+  return getConversationThreads()
+    .filter(thread => thread.recipientKey === recipientKey)
+    .sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))
+}
+
+export function getConversationThread(threadId) {
+  if (!threadId) return null
+  return getConversationThreads().find(thread => thread.id === threadId) || null
+}
+
+export function upsertConversationThread(thread) {
+  if (!thread?.id) return getConversationThreads()
+
+  const threads = getConversationThreads()
+  const updatedThread = {
+    ...thread,
+    updatedAt: Date.now(),
+  }
+  const updated = [
+    updatedThread,
+    ...threads.filter(item => item.id !== thread.id),
+  ]
+    .sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))
+    .slice(0, 40)
+
+  writeRaw(KEYS.THREADS, JSON.stringify(updated))
+  return updated
 }
 
 function slugify(value = '') {

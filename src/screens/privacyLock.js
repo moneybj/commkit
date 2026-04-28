@@ -18,8 +18,8 @@ export function renderPrivacyLock({ mode, error = '' }) {
         </div>
         <div style="font-size:13px;color:var(--muted);line-height:1.65;margin-bottom:22px;">
           ${isSetup
-            ? 'Create a passphrase for this device. Your profile, tags, and conversation history will be encrypted before they are saved locally.'
-            : 'Enter your passphrase to decrypt your on-device profile and conversation history.'}
+            ? 'Encrypts your profile and history in on-device storage.'
+            : 'Unlocks your encrypted on-device profile and history.'}
         </div>
 
         <input id="lockPassphrase" type="password" autocomplete="current-password" style="width:100%;background:var(--s2);border:1.5px solid var(--border);border-radius:14px;padding:15px 14px;color:var(--text);font-family:var(--font-body);font-size:15px;margin-bottom:10px;" placeholder="${isSetup ? 'Create passphrase' : 'Passphrase'}">
@@ -31,7 +31,7 @@ export function renderPrivacyLock({ mode, error = '' }) {
         ${!isSetup ? `<button id="lockReset" class="btn btn-full" style="border-radius:var(--radius-lg);">Reset local data</button>` : ''}
 
         <div style="font-size:11px;color:var(--muted);line-height:1.6;margin-top:14px;">
-          CommKit cannot recover this passphrase. If you reset, only local profile/history data on this device is cleared.
+          On-device security. CommKit cannot recover this passphrase.
         </div>
       </div>
     </div>

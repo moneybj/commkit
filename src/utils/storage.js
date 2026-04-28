@@ -236,10 +236,12 @@ export function addToHistory(entry) {
         versionUsed: entry.versionUsed || null,
         inputMethod: entry.inputMethod || 'text',
         framework: entry.framework || null,
+        frameworkDetail: entry.frameworkDetail || null,
         receiver: entry.receiver || null,
         relationship: entry.relationship || null,
         responses: entry.responses || [],
         resourceBrief: entry.resourceBrief || null,
+        refinements: entry.refinements || [],
       },
       ...history
     ].slice(0, 20) // Keep last 20 sessions
@@ -247,6 +249,27 @@ export function addToHistory(entry) {
     return updated
   } catch (err) {
     console.warn('[CommKit] Could not save history:', err)
+    return getHistory()
+  }
+}
+
+export function updateHistoryEntry(id, updates) {
+  try {
+    const history = getHistory()
+    const updated = history.map(item => {
+      if (item.id !== id) return item
+      return {
+        ...item,
+        ...updates,
+        id: item.id,
+        timestamp: item.timestamp,
+        updatedAt: Date.now(),
+      }
+    })
+    writeRaw(KEYS.HISTORY, JSON.stringify(updated))
+    return updated
+  } catch (err) {
+    console.warn('[CommKit] Could not update history:', err)
     return getHistory()
   }
 }

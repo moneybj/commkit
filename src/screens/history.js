@@ -56,6 +56,8 @@ function renderHistoryItem(item) {
         <div style="background:${relation.bg};color:${relation.color};border:1px solid ${relation.border};border-radius:999px;padding:4px 8px;font-size:10px;font-weight:800;white-space:nowrap;">${escapeHtml(relation.label)}</div>
       </div>
       <div style="font-size:12px;color:var(--text2);line-height:1.55;">${escapeHtml(item.situation || 'No situation saved')}</div>
+      ${renderHistoryMethod(item.frameworkDetail, item.framework)}
+      ${renderHistoryRefinements(item.refinements)}
       <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.12em;color:var(--muted);margin:13px 0 8px;">Responses for ${escapeHtml(item.receiver || inferReceiverLabel(item.situation))}</div>
       ${responses.length ? `
         <div style="display:flex;flex-direction:column;gap:8px;">
@@ -83,17 +85,57 @@ function renderResourceHistoryItem(item) {
         <div style="width:34px;height:34px;border-radius:10px;background:${relation.bg};color:${relation.color};display:flex;align-items:center;justify-content:center;flex-shrink:0;">📄</div>
         <div style="flex:1;min-width:0;">
           <div style="font-size:13px;font-weight:800;color:var(--text);margin-bottom:3px;">${escapeHtml(item.situationTitle || brief.title || 'Resource Brief')}</div>
-          <div style="font-size:11px;color:var(--muted);line-height:1.5;">${escapeHtml(formatDate(item.timestamp))} · ${escapeHtml(item.receiver || 'stakeholder')}</div>
+          <div style="font-size:11px;color:var(--muted);line-height:1.5;">${escapeHtml(formatDate(item.timestamp))} · ${escapeHtml(item.framework || item.receiver || 'stakeholder')}</div>
         </div>
         <div style="background:${relation.bg};color:${relation.color};border:1px solid ${relation.border};border-radius:999px;padding:4px 8px;font-size:10px;font-weight:800;white-space:nowrap;">${escapeHtml(relation.label)}</div>
       </div>
       <div style="font-size:12px;color:var(--text2);line-height:1.55;margin-bottom:12px;">${escapeHtml(item.situation || 'Document brief')}</div>
+      ${renderHistoryMethod(item.frameworkDetail || brief.methodFramework, item.framework)}
+      ${renderHistoryRefinements(item.refinements)}
 
       ${brief.summary?.length ? renderBriefSection('Executive Summary', summaryText, brief.summary) : ''}
       ${brief.talkingPoints?.length ? renderBriefSection('Talking Points', talkingText, brief.talkingPoints) : ''}
       ${brief.presentationOutline?.length ? renderPresentationSection(presentationText, brief.presentationOutline) : ''}
       ${brief.emailDraft ? renderEmailSection(brief.emailDraft) : ''}
     </article>
+  `
+}
+
+function renderHistoryMethod(detail, fallbackName) {
+  if (!detail && !fallbackName) return ''
+
+  const steps = Array.isArray(detail?.methodSteps) ? detail.methodSteps : detail?.steps
+
+  return `
+    <div style="background:var(--gold-dim);border:1px solid var(--gold-border);border-radius:10px;padding:10px 11px;margin-top:10px;">
+      <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.12em;color:var(--gold);margin-bottom:5px;">Model / framework used</div>
+      <div style="font-size:12px;font-weight:800;color:var(--text);line-height:1.45;">${escapeHtml(detail?.name || fallbackName || 'Communication framework')}</div>
+      ${detail?.source ? `<div style="font-size:11px;color:var(--gold-text);line-height:1.45;margin-top:2px;">${escapeHtml(detail.source)}</div>` : ''}
+      ${detail?.explanation ? `<div style="font-size:11px;color:var(--text2);line-height:1.55;margin-top:6px;">${escapeHtml(detail.explanation)}</div>` : ''}
+      ${Array.isArray(steps) && steps.length ? `
+        <ol style="padding-left:18px;color:var(--text2);font-size:11px;line-height:1.55;margin-top:6px;">
+          ${steps.map(step => `<li>${escapeHtml(step)}</li>`).join('')}
+        </ol>
+      ` : ''}
+    </div>
+  `
+}
+
+function renderHistoryRefinements(refinements = []) {
+  if (!Array.isArray(refinements) || refinements.length === 0) return ''
+
+  return `
+    <div style="background:var(--blue-dim);border:1px solid var(--blue-border);border-radius:10px;padding:10px 11px;margin-top:10px;">
+      <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.12em;color:var(--blue);margin-bottom:6px;">Refinement conversation</div>
+      <div style="display:flex;flex-direction:column;gap:6px;">
+        ${refinements.slice(-3).map(item => `
+          <div style="font-size:11px;color:var(--text2);line-height:1.5;">
+            <strong style="color:var(--text);">You:</strong> ${escapeHtml(item.request || '')}
+            ${item.note ? `<br><strong style="color:var(--blue);">CommKit:</strong> ${escapeHtml(item.note)}` : ''}
+          </div>
+        `).join('')}
+      </div>
+    </div>
   `
 }
 

@@ -35,6 +35,11 @@ export function renderResourceCenter({ brief = null, isLoading = false, error = 
           <label style="display:block;font-size:11px;font-weight:700;color:var(--muted);margin-bottom:6px;">Audience</label>
           <input id="resourceAudience" value="${escapeAttr(form.audience || '')}" style="width:100%;background:var(--s3);border:1.5px solid var(--border);border-radius:10px;padding:11px;color:var(--text);font-family:var(--font-body);margin-bottom:10px;" placeholder="e.g. lab manager, QA lead, client">
 
+          <label style="display:block;font-size:11px;font-weight:700;color:var(--muted);margin-bottom:6px;">Relationship / context</label>
+          <select id="resourceRelationship" style="width:100%;background:var(--s3);border:1.5px solid var(--border);border-radius:10px;padding:11px;color:var(--text);font-family:var(--font-body);margin-bottom:10px;">
+            ${renderRelationshipOptions(form.relationship)}
+          </select>
+
           <label style="display:block;font-size:11px;font-weight:700;color:var(--muted);margin-bottom:6px;">Upload documents or images</label>
           <input id="resourceFile" type="file" multiple accept=".txt,.md,.csv,.json,.log,.pdf,.doc,.docx,image/*,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document" style="width:100%;font-size:12px;color:var(--muted);margin-bottom:10px;">
 
@@ -67,7 +72,7 @@ export function renderResourceCenter({ brief = null, isLoading = false, error = 
   `
 }
 
-export function bindResourceCenter({ onBack, onGenerate }) {
+export function bindResourceCenter({ onBack, onGenerate, onRefine }) {
   document.getElementById('resourceBack')?.addEventListener('click', onBack)
 
   document.getElementById('resourceFile')?.addEventListener('change', async (event) => {
@@ -82,6 +87,7 @@ export function bindResourceCenter({ onBack, onGenerate }) {
     onGenerate({
       title: document.getElementById('resourceTitle')?.value.trim() || '',
       audience: document.getElementById('resourceAudience')?.value.trim() || '',
+      relationship: document.getElementById('resourceRelationship')?.value || '',
       documentText: document.getElementById('resourceDoc')?.value.trim() || '',
       context: document.getElementById('resourceContext')?.value.trim() || '',
       attachments: selectedAttachments,
@@ -94,6 +100,67 @@ export function bindResourceCenter({ onBack, onGenerate }) {
       if (ok) showToast('✓ Copied')
     })
   })
+
+  const resourceRefineInput = document.getElementById('resourceRefineInput')
+  const resourceRefineSubmit = document.getElementById('resourceRefineSubmit')
+
+  resourceRefineInput?.addEventListener('input', () => {
+    if (resourceRefineSubmit) resourceRefineSubmit.disabled = resourceRefineInput.value.trim().length < 4
+  })
+
+  async function submitResourceRefinement(instruction) {
+    const input = document.getElementById('resourceRefineInput')
+    const btn = document.getElementById('resourceRefineSubmit')
+
+    if (instruction.length < 4) {
+      input?.focus()
+      return
+    }
+
+    const original = btn.textContent
+    btn.disabled = true
+    btn.textContent = 'Refining brief...'
+
+    try {
+      await onRefine?.(instruction)
+    } catch (err) {
+      btn.disabled = false
+      btn.textContent = original
+      showToast(err.message || 'Could not refine brief')
+    }
+  }
+
+  resourceRefineSubmit?.addEventListener('click', async () => {
+    await submitResourceRefinement(resourceRefineInput?.value.trim() || '')
+  })
+
+  document.querySelectorAll('.resource-refine-chip').forEach(chip => {
+    chip.addEventListener('click', async () => {
+      document.querySelectorAll('.resource-refine-chip').forEach(btn => {
+        btn.disabled = true
+      })
+      chip.textContent = 'Refining...'
+      await submitResourceRefinement(chip.dataset.instruction || '')
+    })
+  })
+}
+
+function renderRelationshipOptions(selected = '') {
+  const options = [
+    ['', 'Select relationship'],
+    ['manager', 'Manager / senior stakeholder'],
+    ['peer', 'Coworker / peer'],
+    ['direct-report', 'Direct report'],
+    ['client', 'Client / partner'],
+    ['professional', 'Professional'],
+    ['personal', 'Personal'],
+    ['family', 'Family'],
+    ['friend', 'Friend'],
+  ]
+
+  return options.map(([value, label]) => (
+    `<option value="${escapeAttr(value)}" ${selected === value ? 'selected' : ''}>${escapeHtml(label)}</option>`
+  )).join('')
 }
 
 async function handleFiles(fileList) {
@@ -203,12 +270,68 @@ function renderAttachmentSummary(attachments) {
 function renderBrief(brief) {
   return `
     <section style="display:flex;flex-direction:column;gap:12px;margin-bottom:14px;">
+      ${renderMethodFramework(brief.methodFramework)}
       ${renderListCard('Executive Summary', brief.summary)}
       ${renderPresentation(brief.presentationOutline)}
       ${renderListCard('Talking Points', brief.talkingPoints)}
       ${renderEmailCard(brief.emailDraft)}
       ${renderQuestions(brief.questionsToExpect)}
+      ${renderResourceRefinementCard(brief)}
     </section>
+  `
+}
+
+function renderMethodFramework(methodFramework) {
+  if (!methodFramework) return ''
+
+  return `
+    <article style="background:var(--gold-dim);border:1px solid var(--gold-border);border-radius:16px;padding:14px;">
+      <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.12em;color:var(--gold);margin-bottom:7px;">Model used to generate this brief</div>
+      <div style="font-size:14px;font-weight:800;color:var(--text);margin-bottom:3px;">${escapeHtml(methodFramework.name || 'Communication model')}</div>
+      ${methodFramework.source ? `<div style="font-size:11px;color:var(--gold-text);line-height:1.5;margin-bottom:8px;">${escapeHtml(methodFramework.source)}</div>` : ''}
+      ${methodFramework.explanation ? `<div style="font-size:12px;color:var(--text2);line-height:1.65;margin-bottom:10px;">${escapeHtml(methodFramework.explanation)}</div>` : ''}
+      ${Array.isArray(methodFramework.steps) && methodFramework.steps.length ? `
+        <ol style="padding-left:18px;color:var(--text2);font-size:11px;line-height:1.6;">
+          ${methodFramework.steps.map(step => `<li>${escapeHtml(step)}</li>`).join('')}
+        </ol>
+      ` : ''}
+    </article>
+  `
+}
+
+function renderResourceRefinementCard(brief) {
+  const refinements = Array.isArray(brief?.refinements) ? brief.refinements : []
+  const isLoading = !!brief?._refinementLoading
+
+  return `
+    <article style="background:linear-gradient(135deg,var(--s2),var(--s3));border:1.5px solid var(--border);border-top:2px solid var(--blue);border-radius:16px;padding:14px;">
+      <div class="section-label" style="margin-bottom:8px;">Refine in conversation</div>
+      <div style="font-family:var(--font-display);font-size:20px;font-weight:700;color:var(--text);line-height:1.14;margin-bottom:7px;">Tune the brief for your audience.</div>
+      <div style="font-size:12px;color:var(--muted);line-height:1.6;margin-bottom:12px;">Ask for changes like more technical detail, a shorter executive summary, or a stronger email follow-up.</div>
+      ${brief?.refinementNote ? `<div style="background:var(--blue-dim);border:1px solid var(--blue-border);border-radius:10px;padding:9px 10px;font-size:11px;color:var(--text2);line-height:1.5;margin-bottom:10px;"><strong style="color:var(--blue);">Latest change:</strong> ${escapeHtml(brief.refinementNote)}</div>` : ''}
+      ${refinements.length ? `
+        <div style="display:flex;flex-direction:column;gap:7px;margin-bottom:10px;">
+          ${refinements.slice(-3).map(item => `
+            <div style="background:var(--s2);border:1px solid var(--border);border-radius:10px;padding:9px 10px;">
+              <div style="font-size:11px;color:var(--text);line-height:1.45;"><strong>You:</strong> ${escapeHtml(item.request || '')}</div>
+              ${item.note ? `<div style="font-size:11px;color:var(--muted);line-height:1.45;margin-top:4px;"><strong>CommKit:</strong> ${escapeHtml(item.note)}</div>` : ''}
+            </div>
+          `).join('')}
+        </div>
+      ` : ''}
+      <div style="display:flex;flex-wrap:wrap;gap:7px;margin-bottom:10px;">
+        ${[
+          ['Shorter summary', 'Make the executive summary shorter and easier to scan.'],
+          ['More technical', 'Add more technical detail while keeping the brief organized.'],
+          ['Stronger email', 'Make the email draft clearer and more action-oriented.'],
+          ['Executive tone', 'Make this more suitable for a senior leader.'],
+        ].map(([label, instruction]) => `
+          <button class="btn resource-refine-chip" data-instruction="${escapeAttr(instruction)}" style="font-size:11px;padding:8px 10px;">${escapeHtml(label)}</button>
+        `).join('')}
+      </div>
+      <textarea id="resourceRefineInput" style="background:var(--s3);border:1.5px solid var(--border);border-radius:10px;padding:11px;min-height:74px;margin-bottom:10px;" placeholder="Example: Make this more suitable for a QA director and add stronger risk language."></textarea>
+      <button id="resourceRefineSubmit" class="btn btn-primary btn-full" disabled>${isLoading ? 'Refining brief...' : 'Refine typed request →'}</button>
+    </article>
   `
 }
 

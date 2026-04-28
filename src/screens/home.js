@@ -25,6 +25,16 @@ export function renderHome({ profile, tags, layerInfo, history, sessionCount }) 
         </div>
       </div>
 
+      <section style="background:linear-gradient(135deg,var(--s2),var(--s3));border:1.5px solid var(--border);border-top:2px solid var(--accent);border-radius:18px;padding:16px;margin-bottom:14px;">
+        <div class="section-label">Quick action</div>
+        <div style="font-family:var(--font-display);font-size:24px;font-weight:700;color:var(--text);line-height:1.1;margin-bottom:8px;">Need words for a hard moment?</div>
+        <div style="font-size:12px;color:var(--muted);line-height:1.6;margin-bottom:16px;">
+          Speak or type what is happening. CommKit will give you three ways to say it in under a minute.
+        </div>
+        <button id="homeStart" class="btn btn-primary btn-full">Start a conversation →</button>
+        <button id="homeResource" class="btn btn-full" style="margin-top:9px;border-radius:var(--radius-lg);">Upload docs for a brief →</button>
+      </section>
+
       <section style="min-height:330px;background:var(--s2);border:1.5px solid var(--border);border-radius:18px;padding:16px;margin-bottom:16px;">
         <div class="section-label">Your Signals</div>
         <div style="font-family:var(--font-display);font-size:22px;font-weight:600;color:var(--text);line-height:1.12;margin-bottom:10px;">What CommKit is learning</div>
@@ -34,16 +44,6 @@ export function renderHome({ profile, tags, layerInfo, history, sessionCount }) 
         <div id="homeTagCloud" style="display:flex;flex-wrap:wrap;gap:8px;">
           ${visibleTags.map(tag => renderTag(tag, tags?.length > 0)).join('')}
         </div>
-      </section>
-
-      <section style="background:linear-gradient(135deg,var(--s2),var(--s3));border:1.5px solid var(--border);border-top:2px solid var(--accent);border-radius:18px;padding:16px;margin-bottom:14px;">
-        <div class="section-label">Quick action</div>
-        <div style="font-family:var(--font-display);font-size:24px;font-weight:700;color:var(--text);line-height:1.1;margin-bottom:8px;">Need words for a hard moment?</div>
-        <div style="font-size:12px;color:var(--muted);line-height:1.6;margin-bottom:16px;">
-          Speak or type what is happening. CommKit will give you three ways to say it in under a minute.
-        </div>
-        <button id="homeStart" class="btn btn-primary btn-full">Start a conversation →</button>
-        <button id="homeResource" class="btn btn-full" style="margin-top:9px;border-radius:var(--radius-lg);">Upload docs for a brief →</button>
       </section>
 
       ${recent ? `

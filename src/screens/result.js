@@ -7,6 +7,7 @@
 import { openShare, copyToClipboard } from '../utils/share.js'
 import { analyseSignals, getTreeRingsSVG, getLayerInfo } from '../features/signals.js'
 import { escapeAttr, escapeHtml } from '../utils/escape.js'
+import { showToast } from '../utils/toast.js'
 
 // ── Render ────────────────────────────────────
 
@@ -32,6 +33,7 @@ export function renderResult({ result, situationLabel, profile, sessionData }) {
         <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.12em;color:var(--muted);margin-bottom:6px;">Signals active for this conversation</div>
         <div style="display:flex;flex-wrap:wrap;gap:6px;">
           ${profile?.style ? `<div class="tag style" style="cursor:default;">${escapeHtml(profile.style)}</div>` : ''}
+          ${sessionData?.relationship ? `<div class="tag strength" style="cursor:default;">For: ${escapeHtml(getRelationshipLabel(sessionData.relationship))}</div>` : ''}
           ${sessionData?.inputMethod === 'voice' ? `<div class="tag strength" style="cursor:default;">🎤 Voice input</div>` : `<div class="tag style" style="cursor:default;">✏️ Typed</div>`}
           <div class="tag growth" style="cursor:default;">📍 Session ${profile?.sessionCount || 1}</div>
         </div>
@@ -46,6 +48,8 @@ export function renderResult({ result, situationLabel, profile, sessionData }) {
           <div style="font-size:11px;color:var(--muted);line-height:1.5;">${escapeHtml(result?.profileApplied || '')}</div>
         </div>
       </div>
+
+      ${result?.framework ? renderMethodStrip(result.framework) : ''}
 
       <!-- Response cards -->
       <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.14em;color:var(--muted);display:flex;align-items:center;gap:8px;padding:0 16px;margin:16px 0 10px;">
@@ -93,6 +97,8 @@ export function renderResult({ result, situationLabel, profile, sessionData }) {
         </div>
       ` : ''}
 
+      ${renderRefinementCard(result)}
+
       <!-- Next steps -->
       ${renderNextActions()}
 
@@ -109,6 +115,28 @@ export function renderResult({ result, situationLabel, profile, sessionData }) {
       </div>
     </div>
   `
+}
+
+function renderMethodStrip(framework) {
+  return `
+    <div style="margin:10px 16px 0;background:var(--gold-dim);border:1px solid var(--gold-border);border-radius:12px;padding:10px 12px;">
+      <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.12em;color:var(--gold);margin-bottom:4px;">Model used to generate these responses</div>
+      <div style="font-size:12px;color:var(--text2);line-height:1.55;"><strong style="color:var(--gold-text);">${escapeHtml(framework.name || 'Communication framework')}</strong>${framework.source ? ` · ${escapeHtml(framework.source)}` : ''}</div>
+    </div>
+  `
+}
+
+function getRelationshipLabel(relationship = '') {
+  return {
+    manager: 'Manager',
+    peer: 'Coworker / peer',
+    'direct-report': 'Direct report',
+    client: 'Client / partner',
+    professional: 'Professional',
+    personal: 'Personal',
+    family: 'Family',
+    friend: 'Friend',
+  }[relationship] || relationship
 }
 
 function renderResponseCard(response, index, badgeClass) {
@@ -143,6 +171,42 @@ function renderResponseCard(response, index, badgeClass) {
         </div>
       </div>
     </article>
+  `
+}
+
+function renderRefinementCard(result) {
+  const refinements = Array.isArray(result?.refinements) ? result.refinements : []
+  const isLoading = !!result?._refinementLoading
+
+  return `
+    <div style="margin:6px 16px 14px;background:linear-gradient(135deg,var(--s2),var(--s3));border:1.5px solid var(--border);border-top:2px solid var(--blue);border-radius:16px;padding:14px;">
+      <div class="section-label" style="margin-bottom:8px;">Refine in conversation</div>
+      <div style="font-family:var(--font-display);font-size:20px;font-weight:700;color:var(--text);line-height:1.14;margin-bottom:7px;">Want it warmer, shorter, firmer, or more technical?</div>
+      <div style="font-size:12px;color:var(--muted);line-height:1.6;margin-bottom:12px;">Ask CommKit to revise these responses. The framework stays visible so you know what model shaped the rewrite.</div>
+      ${result?.refinementNote ? `<div style="background:var(--blue-dim);border:1px solid var(--blue-border);border-radius:10px;padding:9px 10px;font-size:11px;color:var(--text2);line-height:1.5;margin-bottom:10px;"><strong style="color:var(--blue);">Latest change:</strong> ${escapeHtml(result.refinementNote)}</div>` : ''}
+      ${refinements.length ? `
+        <div style="display:flex;flex-direction:column;gap:7px;margin-bottom:10px;">
+          ${refinements.slice(-3).map(item => `
+            <div style="background:var(--s2);border:1px solid var(--border);border-radius:10px;padding:9px 10px;">
+              <div style="font-size:11px;color:var(--text);line-height:1.45;"><strong>You:</strong> ${escapeHtml(item.request || '')}</div>
+              ${item.note ? `<div style="font-size:11px;color:var(--muted);line-height:1.45;margin-top:4px;"><strong>CommKit:</strong> ${escapeHtml(item.note)}</div>` : ''}
+            </div>
+          `).join('')}
+        </div>
+      ` : ''}
+      <div style="display:flex;flex-wrap:wrap;gap:7px;margin-bottom:10px;">
+        ${[
+          ['Shorter', 'Make the responses shorter while keeping the meaning.'],
+          ['Warmer', 'Make the responses warmer and more relationship-preserving.'],
+          ['More direct', 'Make the responses more direct while staying respectful.'],
+          ['Less formal', 'Make the responses sound more natural and less formal.'],
+        ].map(([label, instruction]) => `
+          <button class="btn result-refine-chip" data-instruction="${escapeAttr(instruction)}" style="font-size:11px;padding:8px 10px;">${escapeHtml(label)}</button>
+        `).join('')}
+      </div>
+      <textarea id="resultRefineInput" style="background:var(--s3);border:1.5px solid var(--border);border-radius:10px;padding:11px;min-height:74px;margin-bottom:10px;" placeholder="Example: Make this sound more respectful to a manager, but keep it direct."></textarea>
+      <button id="resultRefineSubmit" class="btn btn-primary btn-full" disabled>${isLoading ? 'Refining responses...' : 'Refine typed request →'}</button>
+    </div>
   `
 }
 
@@ -258,6 +322,14 @@ function renderFrameworkCard(fw) {
       <div id="fwBody" style="padding:14px;display:none;">
         <div style="font-size:11px;color:var(--muted);margin-bottom:10px;line-height:1.5;">📍 <strong style="color:var(--gold-text);">${escapeHtml(fw.source)}</strong></div>
         <div style="font-size:12px;color:var(--text2);line-height:1.7;margin-bottom:14px;">${escapeHtml(fw.explanation)}</div>
+        ${Array.isArray(fw.methodSteps) && fw.methodSteps.length ? `
+          <div style="background:var(--s3);border:1px solid var(--gold-border);border-radius:10px;padding:10px;margin-bottom:12px;">
+            <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.12em;color:var(--gold);margin-bottom:6px;">How CommKit used it</div>
+            <ol style="padding-left:18px;color:var(--text2);font-size:11px;line-height:1.6;">
+              ${fw.methodSteps.map(step => `<li>${escapeHtml(step)}</li>`).join('')}
+            </ol>
+          </div>
+        ` : ''}
         <div style="display:flex;gap:10px;margin-bottom:12px;">
           <div style="flex:1;background:var(--s3);border-radius:10px;padding:10px;">
             <div style="font-family:var(--font-display);font-size:22px;color:var(--gold);">${escapeHtml(fw.stat1num)}</div>
@@ -344,7 +416,7 @@ function renderFeedbackCard() {
 
 // ── Bind ──────────────────────────────────────
 
-export function bindResult({ onBack, onNewSession, onHome, onResource, onVersionUsed, onFormatChosen, onFrameworkOpened, onFeedback, onTagAccepted }) {
+export function bindResult({ onBack, onNewSession, onHome, onResource, onVersionUsed, onFormatChosen, onFrameworkOpened, onFeedback, onTagAccepted, onRefine }) {
   // Back
   document.getElementById('resultBack')?.addEventListener('click', onBack)
 
@@ -423,6 +495,49 @@ export function bindResult({ onBack, onNewSession, onHome, onResource, onVersion
 
   document.querySelectorAll('.format-share').forEach(btn => {
     btn.addEventListener('click', () => openShare(btn.dataset.text || ''))
+  })
+
+  const resultRefineInput = document.getElementById('resultRefineInput')
+  const resultRefineSubmit = document.getElementById('resultRefineSubmit')
+
+  resultRefineInput?.addEventListener('input', () => {
+    if (resultRefineSubmit) resultRefineSubmit.disabled = resultRefineInput.value.trim().length < 4
+  })
+
+  async function submitResultRefinement(instruction) {
+    const input = document.getElementById('resultRefineInput')
+    const btn = document.getElementById('resultRefineSubmit')
+
+    if (instruction.length < 4) {
+      input?.focus()
+      return
+    }
+
+    const original = btn.textContent
+    btn.disabled = true
+    btn.textContent = 'Refining responses...'
+
+    try {
+      await onRefine?.(instruction)
+    } catch (err) {
+      btn.disabled = false
+      btn.textContent = original
+      showToast(err.message || 'Could not refine responses')
+    }
+  }
+
+  resultRefineSubmit?.addEventListener('click', async () => {
+    await submitResultRefinement(resultRefineInput?.value.trim() || '')
+  })
+
+  document.querySelectorAll('.result-refine-chip').forEach(chip => {
+    chip.addEventListener('click', async () => {
+      document.querySelectorAll('.result-refine-chip').forEach(btn => {
+        btn.disabled = true
+      })
+      chip.textContent = 'Refining...'
+      await submitResultRefinement(chip.dataset.instruction || '')
+    })
   })
 
   // Next-step navigation

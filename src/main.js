@@ -6,7 +6,7 @@
 
 import './style.css'
 
-import { clearEncryptedStorage, getProfile, hasProfile, incrementSession, getSessionCount, getTags, addTag, removeTag, getHistory, addToHistory, isEncryptionConfigured, isEncryptionUnlocked, setupLocalEncryption, unlockLocalEncryption, isInstalled, markInstalled, isNudgeDismissed, dismissNudge, isIosNudgeShown, markIosNudgeShown } from './utils/storage.js'
+import { clearEncryptedStorage, getProfile, hasProfile, incrementSession, getSessionCount, getTags, addTag, removeTag, getHistory, addToHistory, updateHistoryEntry, isEncryptionConfigured, isEncryptionUnlocked, setupLocalEncryption, unlockLocalEncryption, isInstalled, markInstalled, isNudgeDismissed, dismissNudge, isIosNudgeShown, markIosNudgeShown } from './utils/storage.js'
 import { initToast, showToast } from './utils/toast.js'
 import { initShare } from './utils/share.js'
 import { renderPrivacyLock, bindPrivacyLock } from './screens/privacyLock.js'
@@ -17,7 +17,7 @@ import { renderResourceCenter, bindResourceCenter } from './screens/resourceCent
 import { renderSession, bindSession } from './screens/session.js'
 import { renderProcessing, animateProcessingSteps, showProcessingError } from './screens/processing.js'
 import { renderResult, bindResult } from './screens/result.js'
-import { generateResponses, generateResourceBrief } from './features/api.js'
+import { generateResponses, refineResponses, generateResourceBrief, refineResourceBrief } from './features/api.js'
 import { recordSignal, SIGNAL_TYPES, getLayerInfo } from './features/signals.js'
 
 // ── App State ────────────────────────────────
@@ -26,6 +26,10 @@ const appState = {
   currentScreen: null,
   profile: null,
   currentResult: null,
+  currentHistoryId: null,
+  currentProfileData: null,
+  currentResourceInput: null,
+  currentResourceBrief: null,
   sessionData: {
     situation: '',
     situationText: '',
@@ -58,14 +62,19 @@ async function boot() {
   initShare()
 
   if (!isEncryptionUnlocked()) {
-    showPrivacyLock()
+    if (isEncryptionConfigured()) {
+      showPrivacyLock()
+      return
+    }
+
+    showWelcome()
     return
   }
 
   startApp()
 }
 
-function startApp() {
+function startApp(initialScreen = '') {
   // Completed sessions drive Layers and install timing.
   const sessionNum = getSessionCount()
   appState.profile = getProfile()
@@ -78,8 +87,9 @@ function startApp() {
   setupInstallPrompt(sessionNum)
 
   // Route to correct first screen
-  const isNew = !hasProfile()
-  if (isNew) {
+  if (initialScreen === 'session') {
+    showSession()
+  } else if (!hasProfile()) {
     showWelcome()
   } else {
     showHome()
@@ -92,7 +102,7 @@ function startApp() {
 
 // ── Screen Router ────────────────────────────
 
-function showPrivacyLock(error = '') {
+function showPrivacyLock(error = '', afterUnlock = startApp) {
   const mode = isEncryptionConfigured() ? 'unlock' : 'setup'
   const mount = document.getElementById('screenMount')
   mount.innerHTML = renderPrivacyLock({ mode, error })
@@ -101,13 +111,13 @@ function showPrivacyLock(error = '') {
     onSubmit: async ({ passphrase, confirm }) => {
       try {
         if (passphrase.length < 8) {
-          showPrivacyLock('Use at least 8 characters.')
+          showPrivacyLock('Use at least 8 characters.', afterUnlock)
           return
         }
 
         if (mode === 'setup') {
           if (passphrase !== confirm) {
-            showPrivacyLock('Passphrases do not match.')
+            showPrivacyLock('Passphrases do not match.', afterUnlock)
             return
           }
           await setupLocalEncryption(passphrase)
@@ -115,14 +125,14 @@ function showPrivacyLock(error = '') {
           await unlockLocalEncryption(passphrase)
         }
 
-        startApp()
+        afterUnlock()
       } catch {
-        showPrivacyLock('Could not unlock. Check your passphrase.')
+        showPrivacyLock('Could not unlock. Check your passphrase.', afterUnlock)
       }
     },
     onReset: () => {
       clearEncryptedStorage()
-      showPrivacyLock()
+      showWelcome()
     },
   })
   appState.currentScreen = 'privacy-lock'
@@ -131,7 +141,15 @@ function showPrivacyLock(error = '') {
 function showWelcome() {
   const mount = document.getElementById('screenMount')
   mount.innerHTML = renderWelcome({})
-  bindWelcome({ onStart: showSession })
+  bindWelcome({
+    onStart: () => {
+      if (!isEncryptionUnlocked()) {
+        showPrivacyLock('', () => startApp('session'))
+        return
+      }
+      showSession()
+    },
+  })
   appState.currentScreen = 'welcome'
 }
 
@@ -173,6 +191,7 @@ function showResourceCenter(props = {}) {
   bindResourceCenter({
     onBack: hasProfile() ? showHome : showWelcome,
     onGenerate: handleResourceGenerate,
+    onRefine: handleResourceRefine,
   })
   appState.currentScreen = 'resource'
 }
@@ -190,8 +209,8 @@ function showSession() {
   appState.currentScreen = 'session'
 }
 
-async function handleGenerate({ situation, situationText, inputMethod }) {
-  appState.sessionData = { situation, situationText, inputMethod }
+async function handleGenerate({ situation, situationText, relationship, inputMethod }) {
+  appState.sessionData = { situation, situationText, relationship, inputMethod }
   const profile = getProfile()
   const sessionCount = getSessionCount() + 1
 
@@ -199,9 +218,11 @@ async function handleGenerate({ situation, situationText, inputMethod }) {
     role:         profile.role || 'Professional',
     style:        profile.style || 'Balanced',
     situation:    situationText || situation,
+    relationship,
     sessionCount,
     inputMethod,
   }
+  appState.currentProfileData = profileData
 
   // Show processing
   const mount = document.getElementById('screenMount')
@@ -222,19 +243,23 @@ async function handleGenerate({ situation, situationText, inputMethod }) {
 
     const completedSessions = incrementSession()
     addStarterTags(profile)
-    addToHistory({
+    const resultWithThread = { ...result, refinements: [] }
+    const history = addToHistory({
       situation: situationText || situation,
-      situationTitle: result.situationTitle,
+      situationTitle: resultWithThread.situationTitle,
       inputMethod,
-      framework: result.framework?.name,
-      receiver: getReceiverLabel(situationText || situation),
-      relationship: getRelationshipCategory(situationText || situation),
-      responses: getHistoryResponses(result),
+      framework: resultWithThread.framework?.name,
+      frameworkDetail: resultWithThread.framework || null,
+      receiver: getRelationshipLabel(relationship, situationText || situation),
+      relationship: relationship || getRelationshipCategory(situationText || situation),
+      responses: getHistoryResponses(resultWithThread),
+      refinements: [],
     })
 
-    appState.currentResult = result
+    appState.currentHistoryId = history[0]?.id || null
+    appState.currentResult = resultWithThread
     appState.profile = getProfile()
-    showResult(result, situation)
+    showResult(resultWithThread, situation)
     maybeShowInstallPrompt(completedSessions)
 
   } catch (err) {
@@ -273,8 +298,49 @@ function showResult(result, situationLabel) {
       addTag(tag)
       showToast('✓ Tag added to your profile')
     },
+    onRefine: handleResponseRefine,
   })
   appState.currentScreen = 'result'
+}
+
+async function handleResponseRefine(instruction) {
+  const current = appState.currentResult
+  if (!current) throw new Error('No response to refine yet')
+
+  try {
+    const refinements = current.refinements || []
+    const refined = await refineResponses({
+      profileData: appState.currentProfileData || {},
+      currentResult: stripUiState(current),
+      instruction,
+      refinements,
+    })
+    const nextRefinements = [
+      ...refinements,
+      {
+        request: instruction,
+        note: refined.refinementNote || 'Responses updated.',
+        timestamp: Date.now(),
+      },
+    ]
+    const updated = { ...refined, refinements: nextRefinements }
+
+    appState.currentResult = updated
+    if (appState.currentHistoryId) {
+      updateHistoryEntry(appState.currentHistoryId, {
+        situationTitle: updated.situationTitle,
+        framework: updated.framework?.name || null,
+        frameworkDetail: updated.framework || null,
+        responses: getHistoryResponses(updated),
+        refinements: nextRefinements,
+      })
+    }
+    showToast('✓ Responses refined')
+    showResult(updated, appState.sessionData.situation)
+  } catch (err) {
+    showResult(current, appState.sessionData.situation)
+    throw err
+  }
 }
 
 async function handleResourceGenerate(payload) {
@@ -293,24 +359,70 @@ async function handleResourceGenerate(payload) {
 
   try {
     const brief = await generateResourceBrief(payload)
-    addToHistory({
+    const briefWithThread = { ...brief, refinements: [] }
+    const history = addToHistory({
       kind: 'resource',
       situation: getResourceHistorySummary(payload),
-      situationTitle: brief.title || payload.title || 'Resource Brief',
+      situationTitle: briefWithThread.title || payload.title || 'Resource Brief',
       inputMethod: 'document',
-      framework: 'Resource Center',
-      receiver: payload.audience || 'stakeholder',
-      relationship: getRelationshipCategory(`${payload.audience || ''} ${payload.context || ''}`),
-      resourceBrief: getHistoryResourceBrief(brief),
+      framework: briefWithThread.methodFramework?.name || 'Resource Center',
+      frameworkDetail: briefWithThread.methodFramework || null,
+      receiver: payload.audience || getRelationshipLabel(payload.relationship, ''),
+      relationship: payload.relationship || getRelationshipCategory(`${payload.audience || ''} ${payload.context || ''}`),
+      resourceBrief: getHistoryResourceBrief(briefWithThread),
+      refinements: [],
     })
+    appState.currentHistoryId = history[0]?.id || null
+    appState.currentResourceInput = payload
+    appState.currentResourceBrief = briefWithThread
     showToast('✓ Brief saved to history')
-    showResourceCenter({ brief })
+    showResourceCenter({ brief: briefWithThread })
   } catch (err) {
     console.error('[CommKit] Resource Center error:', err)
     showResourceCenter({
       error: err.message || 'Could not generate resource brief. Please try again.',
       form: payload,
     })
+  }
+}
+
+async function handleResourceRefine(instruction) {
+  const current = appState.currentResourceBrief
+  if (!current) throw new Error('No resource brief to refine yet')
+
+  try {
+    const refinements = current.refinements || []
+    const refined = await refineResourceBrief({
+      originalInput: appState.currentResourceInput || {},
+      currentBrief: stripUiState(current),
+      instruction,
+      refinements,
+    })
+    const nextRefinements = [
+      ...refinements,
+      {
+        request: instruction,
+        note: refined.refinementNote || 'Brief updated.',
+        timestamp: Date.now(),
+      },
+    ]
+    const updated = { ...refined, refinements: nextRefinements }
+
+    appState.currentResourceBrief = updated
+    if (appState.currentHistoryId) {
+      updateHistoryEntry(appState.currentHistoryId, {
+        situationTitle: updated.title || 'Resource Brief',
+        framework: updated.methodFramework?.name || 'Resource Center',
+        frameworkDetail: updated.methodFramework || null,
+        resourceBrief: getHistoryResourceBrief(updated),
+        refinements: nextRefinements,
+      })
+    }
+    showToast('✓ Brief refined')
+    showResourceCenter({ brief: updated })
+  } catch (err) {
+    showResourceCenter({ brief: current, form: appState.currentResourceInput || {} })
+    throw err
   }
 }
 
@@ -489,12 +601,20 @@ function getHistoryResponses(result) {
 function getHistoryResourceBrief(brief) {
   return {
     title: brief.title || 'Resource Brief',
+    methodFramework: brief.methodFramework || null,
     summary: Array.isArray(brief.summary) ? brief.summary : [],
     presentationOutline: Array.isArray(brief.presentationOutline) ? brief.presentationOutline : [],
     talkingPoints: Array.isArray(brief.talkingPoints) ? brief.talkingPoints : [],
     emailDraft: brief.emailDraft || '',
     questionsToExpect: Array.isArray(brief.questionsToExpect) ? brief.questionsToExpect : [],
+    refinementNote: brief.refinementNote || '',
   }
+}
+
+function stripUiState(value) {
+  const clean = { ...(value || {}) }
+  delete clean._refinementLoading
+  return clean
 }
 
 function getReceiverLabel(situation = '') {
@@ -509,6 +629,19 @@ function getReceiverLabel(situation = '') {
   if (/\b(personal|relationship|dating|boyfriend|girlfriend)\b/.test(text)) return 'personal'
 
   return 'the other person'
+}
+
+function getRelationshipLabel(relationship = '', fallbackText = '') {
+  return {
+    manager: 'manager',
+    peer: 'coworker / peer',
+    'direct-report': 'direct report',
+    client: 'client / partner',
+    professional: 'professional stakeholder',
+    personal: 'personal relationship',
+    family: 'family',
+    friend: 'friend',
+  }[relationship] || getReceiverLabel(fallbackText)
 }
 
 function getRelationshipCategory(text = '') {

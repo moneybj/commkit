@@ -25,11 +25,23 @@ const STYLES = [
   { key: 'Energetic', emoji: '⚡', desc: 'Bring energy. People feel your presence.',    cls: 'c4' },
 ]
 
+const RELATIONSHIPS = [
+  { key: 'manager', label: 'Manager', icon: '⬆️' },
+  { key: 'peer', label: 'Coworker / peer', icon: '🤝' },
+  { key: 'direct-report', label: 'Direct report', icon: '👥' },
+  { key: 'client', label: 'Client / partner', icon: '🏢' },
+  { key: 'professional', label: 'Professional', icon: '💼' },
+  { key: 'personal', label: 'Personal', icon: '🧭' },
+  { key: 'family', label: 'Family', icon: '🏠' },
+  { key: 'friend', label: 'Friend', icon: '⭐' },
+]
+
 // ── State ─────────────────────────────────────
 
 let sessionState = {
   role: '',
   style: '',
+  relationship: '',
   situation: '',
   situationText: '',
   inputMethod: 'voice',
@@ -68,6 +80,8 @@ export function renderSession({ profile }) {
           </div>
           <div aria-hidden="true" style="color:var(--accent);font-size:22px;">›</div>
         </button>
+
+        ${renderRelationshipSection()}
 
         <!-- Situation grid -->
         <div class="section-label" style="margin-top:${hasProfile ? '0' : '4px'};">Your situation</div>
@@ -196,6 +210,21 @@ function renderStyleSection() {
   `
 }
 
+function renderRelationshipSection() {
+  return `
+    <div style="margin-bottom:16px;">
+      <div class="section-label">Who is this for?</div>
+      <div style="display:flex;flex-wrap:wrap;gap:7px;" id="relationshipChips">
+        ${RELATIONSHIPS.map(item => `
+          <button class="relationship-chip" data-relationship="${escapeAttr(item.key)}" data-label="${escapeAttr(item.label)}" style="background:var(--s2);border:1.5px solid var(--border);border-radius:20px;padding:8px 10px;font-size:12px;font-weight:700;color:var(--muted);cursor:pointer;font-family:var(--font-body);display:flex;align-items:center;gap:6px;transition:all .2s;">
+            <span>${item.icon}</span><span>${escapeHtml(item.label)}</span>
+          </button>
+        `).join('')}
+      </div>
+    </div>
+  `
+}
+
 // ── Bind ──────────────────────────────────────
 
 export function bindSession({ profile, onBack, onResource, onGenerate }) {
@@ -203,6 +232,7 @@ export function bindSession({ profile, onBack, onResource, onGenerate }) {
   sessionState = {
     role: profile?.role || '',
     style: profile?.style || '',
+    relationship: '',
     situation: '',
     situationText: '',
     inputMethod: 'voice',
@@ -262,6 +292,22 @@ export function bindSession({ profile, onBack, onResource, onGenerate }) {
   })
 
   // Situation grid
+  document.querySelectorAll('.relationship-chip').forEach(chip => {
+    chip.addEventListener('click', () => {
+      document.querySelectorAll('.relationship-chip').forEach(c => {
+        c.style.borderColor = 'var(--border)'
+        c.style.color = 'var(--muted)'
+        c.style.background = 'var(--s2)'
+      })
+      chip.style.borderColor = 'var(--accent)'
+      chip.style.color = 'var(--accent)'
+      chip.style.background = 'var(--accent-dim)'
+      sessionState.relationship = chip.dataset.relationship
+      checkCta()
+    })
+  })
+
+  // Situation grid
   document.querySelectorAll('.sit-item').forEach(item => {
     item.addEventListener('click', () => {
       document.querySelectorAll('.sit-item').forEach(s => {
@@ -311,6 +357,7 @@ export function bindSession({ profile, onBack, onResource, onGenerate }) {
       onGenerate({
         situation:    sessionState.situation,
         situationText: sessionState.situationText || sessionState.situation,
+        relationship: sessionState.relationship,
         inputMethod:  sessionState.inputMethod,
       })
     }
@@ -444,6 +491,7 @@ function showTranscriptActions() {
 
 function checkCta() {
   const hasSit = sessionState.situation || (sessionState.situationText && sessionState.situationText.length > 8)
+  const hasRelationship = sessionState.relationship
   const hasRole = sessionState.role
   const hasStyle = sessionState.style
 
@@ -452,7 +500,7 @@ function checkCta() {
   const needsProfile = !!roleSection
 
   const profileOk = needsProfile ? (hasRole && hasStyle) : true
-  const ready = hasSit && profileOk
+  const ready = hasSit && hasRelationship && profileOk
 
   const btn = document.getElementById('generateBtn')
   if (btn) btn.disabled = !ready

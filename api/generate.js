@@ -5,8 +5,12 @@
  */
 
 export default async function handler(req, res) {
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), 26000)
+
   // Only allow POST
   if (req.method !== 'POST') {
+    clearTimeout(timeout)
     return res.status(405).json({ error: 'Method not allowed' })
   }
 
@@ -15,25 +19,35 @@ export default async function handler(req, res) {
   if (!apiKey) {
     if (process.env.VERCEL_ENV !== 'production') {
       console.warn('[CommKit API] ANTHROPIC_API_KEY not set — returning local demo response')
+      clearTimeout(timeout)
       return res.status(200).json(buildDemoAnthropicResponse(req.body?.prompt || ''))
     }
 
     console.error('[CommKit API] ANTHROPIC_API_KEY not set')
+    clearTimeout(timeout)
     return res.status(500).json({ error: 'API not configured' })
   }
 
   // Validate request body
   const { prompt, attachments = [] } = req.body || {}
   if (!prompt || typeof prompt !== 'string') {
+    clearTimeout(timeout)
     return res.status(400).json({ error: 'prompt is required' })
   }
 
   // Sanity check prompt length
-  if (prompt.length > 8000) {
+  if (prompt.length > 9000) {
+    clearTimeout(timeout)
     return res.status(400).json({ error: 'prompt too long' })
   }
 
   try {
+    const isResourceRequest = prompt.includes('CommKit Resource Center')
+    const isRefinementRequest = prompt.includes('USER FOLLOW-UP REQUEST')
+    const hasFiles = attachments.some(attachment => attachment?.data)
+    const model = process.env.ANTHROPIC_MODEL
+      || (hasFiles ? 'claude-sonnet-4-20250514' : 'claude-haiku-4-5-20251001')
+
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
@@ -41,9 +55,10 @@ export default async function handler(req, res) {
         'x-api-key': apiKey,
         'anthropic-version': '2023-06-01',
       },
+      signal: controller.signal,
       body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 3200,
+        model,
+        max_tokens: isResourceRequest || isRefinementRequest ? 2600 : 2200,
         messages: [
           { role: 'user', content: buildMessageContent(prompt, attachments) }
         ],
@@ -54,16 +69,24 @@ export default async function handler(req, res) {
 
     if (!response.ok) {
       console.error('[CommKit API] Anthropic error:', data)
+      clearTimeout(timeout)
       return res.status(response.status).json({
         error: data.error?.message || `API error ${response.status}`
       })
     }
 
     // Forward the successful response
+    clearTimeout(timeout)
     return res.status(200).json(data)
 
   } catch (err) {
     console.error('[CommKit API] Fetch error:', err)
+    clearTimeout(timeout)
+    if (err.name === 'AbortError') {
+      return res.status(504).json({
+        error: 'AI response timed out. Try a shorter situation or refine after generation.'
+      })
+    }
     return res.status(500).json({
       error: 'Could not reach AI service. Check your connection.'
     })
@@ -104,12 +127,17 @@ function buildMessageContent(prompt, attachments) {
 }
 
 function buildDemoAnthropicResponse(prompt) {
+  if (prompt.includes('CommKit Resource Center')) {
+    return buildDemoResourceResponse(prompt)
+  }
+
   const situation = getPromptField(prompt, 'Situation') || 'a hard workplace conversation'
   const role = getPromptField(prompt, 'Role') || 'Professional'
   const style = getPromptField(prompt, 'Communication style') || 'Balanced'
+  const isRefinement = prompt.includes('USER FOLLOW-UP REQUEST')
 
   const demo = {
-    situationTitle: 'Performance Follow-Up',
+    situationTitle: isRefinement ? 'Refined Follow-Up' : 'Performance Follow-Up',
     detectedSummary: `You need to address ${situation.toLowerCase()} without making the other person defensive.`,
     profileApplied: `I calibrated this for a ${role.toLowerCase()} with a ${style.toLowerCase()} communication style.`,
     responses: [
@@ -142,6 +170,7 @@ function buildDemoAnthropicResponse(prompt) {
       name: 'SBI Model',
       source: 'Center for Creative Leadership',
       explanation: 'SBI works here because it keeps the conversation grounded in what happened, what behavior was observed, and why it matters. That lowers defensiveness and makes the next step easier to agree on.',
+      methodSteps: ['Name the specific situation', 'Describe the behavior without blame', 'Explain the impact', 'Ask for a clear next step'],
       stat1num: '40yr',
       stat1label: 'research validation',
       stat2num: '80%',
@@ -165,6 +194,69 @@ function buildDemoAnthropicResponse(prompt) {
     ],
     signalObservation: `${style} communicators often do best when they stay specific before explaining impact.`,
     suggestedTag: '🎯 Clear under pressure',
+    refinementNote: isRefinement ? 'I tightened the language based on your follow-up request.' : '',
+  }
+
+  return {
+    content: [
+      {
+        type: 'text',
+        text: JSON.stringify(demo),
+      },
+    ],
+  }
+}
+
+function buildDemoResourceResponse(prompt) {
+  const isRefinement = prompt.includes('USER FOLLOW-UP REQUEST')
+  const title = getPromptField(prompt, 'Title') || 'QC Review Brief'
+  const audience = getPromptField(prompt, 'Audience') || 'manager or stakeholder'
+
+  const demo = {
+    title: isRefinement ? 'Refined QC Brief' : title,
+    methodFramework: {
+      name: 'Pyramid Principle + Audience-Centered Briefing',
+      source: 'Barbara Minto; stakeholder communication practice',
+      explanation: `This structure leads with the answer first, then supports it with the evidence ${audience} needs for a decision. It keeps technical detail organized without burying the action needed.`,
+      steps: ['Lead with the main takeaway', 'Group evidence by decision impact', 'Translate findings into actions', 'Prepare likely stakeholder questions'],
+    },
+    summary: [
+      'The key finding should be stated first so the audience knows what decision or action is needed.',
+      'Technical details should be grouped by impact, risk, and next step rather than document order.',
+      'Any uncertainty should be named clearly with what is being done to close the gap.',
+    ],
+    presentationOutline: [
+      {
+        slide: 'Main Takeaway',
+        points: ['State the finding in plain language', 'Name the recommended decision or next step'],
+      },
+      {
+        slide: 'Evidence and Impact',
+        points: ['Summarize the strongest supporting data', 'Explain operational or quality impact'],
+      },
+      {
+        slide: 'Next Steps',
+        points: ['Assign owners and timing', 'Clarify what needs approval'],
+      },
+    ],
+    talkingPoints: [
+      'The main point is what changed, why it matters, and what we recommend next.',
+      'The evidence supports action, but I will separate confirmed facts from open items.',
+      'The immediate risk is manageable if we follow the proposed next steps.',
+      'I can walk through the data, but I want to start with the decision needed.',
+    ],
+    emailDraft: 'Subject: QC review summary and next steps\n\nHi [Name],\n\nI summarized the key findings, impact, and recommended next steps from the review. The main takeaway is that we should align on the decision needed first, then confirm ownership and timing for the follow-up actions.\n\nThanks,\n[Your name]',
+    questionsToExpect: [
+      {
+        question: 'What decision do you need from me?',
+        answer: 'I need alignment on the recommended next step and confirmation of who should own the follow-up.',
+      },
+      {
+        question: 'What is the biggest risk?',
+        answer: 'The biggest risk is delay or unclear ownership, so I am proposing specific next steps and timing.',
+      },
+    ],
+    refinementNote: isRefinement ? 'I adjusted the brief around your follow-up request.' : '',
   }
 
   return {

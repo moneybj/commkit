@@ -6,7 +6,7 @@
 
 import './style.css'
 
-import { clearEncryptedStorage, getProfile, hasProfile, incrementSession, getSessionCount, getTags, addTag, removeTag, getHistory, addToHistory, updateHistoryEntry, makeRecipientKey, getRecipientMemory, saveRecipientMemory, upsertConversationThread, isEncryptionConfigured, isEncryptionUnlocked, setupLocalEncryption, unlockLocalEncryption, isInstalled, markInstalled, isNudgeDismissed, dismissNudge, isIosNudgeShown, markIosNudgeShown } from './utils/storage.js'
+import { clearEncryptedStorage, getProfile, hasProfile, incrementSession, getSessionCount, getTags, addTag, removeTag, getHistory, addToHistory, updateHistoryEntry, makeRecipientKey, getRecipientMemory, saveRecipientMemory, getConversationThread, upsertConversationThread, isEncryptionConfigured, isEncryptionUnlocked, setupLocalEncryption, unlockLocalEncryption, isInstalled, markInstalled, isNudgeDismissed, dismissNudge, isIosNudgeShown, markIosNudgeShown } from './utils/storage.js'
 import { initToast, showToast } from './utils/toast.js'
 import { initShare } from './utils/share.js'
 import { renderPrivacyLock, bindPrivacyLock } from './screens/privacyLock.js'
@@ -189,6 +189,7 @@ function showHistory() {
   bindHistory({
     onBack: showHome,
     onNewSession: showSession,
+    onContinue: handleContinueFromHistory,
   })
   appState.currentScreen = 'history'
 }
@@ -204,16 +205,72 @@ function showResourceCenter(props = {}) {
   appState.currentScreen = 'resource'
 }
 
-function showSession() {
+function showSession(seed = null) {
+  seed = normalizeSessionSeed(seed)
   appState.profile = getProfile()
   const mount = document.getElementById('screenMount')
-  mount.innerHTML = renderSession({ profile: appState.profile })
+  mount.innerHTML = renderSession({ profile: appState.profile, seed })
   bindSession({
     profile: appState.profile,
+    seed,
     onBack: hasProfile() ? showHome : showWelcome,
     onGenerate: handleGenerate,
   })
   appState.currentScreen = 'session'
+}
+
+function handleContinueFromHistory(historyId) {
+  const item = getHistory().find(entry => String(entry.id) === String(historyId))
+  if (!item) {
+    showToast('Could not find that conversation.')
+    return
+  }
+
+  const relationship = item.relationship || getRelationshipCategory(`${item.receiver || ''} ${item.situation || ''}`)
+  const recipientLabel = item.recipientLabel || item.receiver || ''
+  const recipientKey = item.recipientKey || makeRecipientKey(relationship, recipientLabel)
+  const conversationThread = getConversationThread(item.threadId) || buildThreadSeedFromHistory(item, recipientKey, recipientLabel, relationship)
+
+  showSession({
+    relationship,
+    recipientLabel,
+    recipientKey,
+    conversationThread,
+    threadTitle: item.threadTitle || conversationThread?.title || item.situationTitle || 'Previous conversation',
+    situationHint: item.situationTitle || item.situation || '',
+    sourceKind: item.kind || 'conversation',
+  })
+}
+
+function normalizeSessionSeed(seed) {
+  if (!seed || typeof seed !== 'object') return null
+
+  const looksLikeSeed = 'relationship' in seed ||
+    'recipientLabel' in seed ||
+    'conversationThread' in seed ||
+    'situationHint' in seed
+
+  return looksLikeSeed ? seed : null
+}
+
+function buildThreadSeedFromHistory(item, recipientKey, recipientLabel, relationship) {
+  const responses = Array.isArray(item.responses) ? item.responses : []
+  const selected = responses.find(response => response.label === item.versionUsed) || responses[1] || responses[0]
+  const brief = item.resourceBrief || null
+
+  return {
+    id: item.threadId || `history_${item.id}`,
+    recipientKey,
+    recipientLabel,
+    relationship,
+    title: item.threadTitle || item.situationTitle || brief?.title || 'Previous conversation',
+    summary: item.situation || brief?.summary?.[0] || '',
+    lastResponse: selected?.text || brief?.emailDraft || '',
+    lastNextStep: item.refinements?.slice(-1)[0]?.note || selected?.shortText || brief?.talkingPoints?.[0] || '',
+    tonePreference: selected?.tone || '',
+    openQuestions: [],
+    updatedAt: item.updatedAt || item.timestamp || Date.now(),
+  }
 }
 
 async function handleGenerate({ situation, situationText, relationship, recipientLabel, supportingDocs, conversationThread, inputMethod }) {

@@ -60,7 +60,7 @@ let voiceInput = null
 
 // ── Render ────────────────────────────────────
 
-export function renderSession({ profile }) {
+export function renderSession({ profile, seed = null }) {
   const hasProfile = !!(profile?.role && profile?.style)
 
   return `
@@ -79,8 +79,9 @@ export function renderSession({ profile }) {
         ${hasProfile ? renderProfileBar(profile) : ''}
         ${!hasProfile ? renderRoleSection() : ''}
         ${!hasProfile ? renderStyleSection() : ''}
+        ${seed ? renderContinueBanner(seed) : ''}
 
-        ${renderRelationshipSection()}
+        ${renderRelationshipSection(seed)}
         ${renderThreadSection()}
 
         <!-- Situation grid -->
@@ -149,7 +150,7 @@ export function renderSession({ profile }) {
           <!-- Text panel (hidden by default) -->
           <div id="textPanel" style="display:none;">
             <div style="padding:10px 13px 0;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.12em;color:var(--muted);">✏️ &nbsp;Describe your situation</div>
-            <textarea id="ftTa" style="padding:7px 13px 13px;min-height:72px;" placeholder="e.g. My colleague keeps taking credit for my work in meetings..."></textarea>
+            <textarea id="ftTa" style="padding:7px 13px 13px;min-height:72px;" placeholder="${escapeAttr(seed?.situationHint ? `What changed since "${seed.situationHint}"?` : 'e.g. My colleague keeps taking credit for my work in meetings...')}"></textarea>
           </div>
         </div>
 
@@ -162,6 +163,16 @@ export function renderSession({ profile }) {
       <div style="position:fixed;bottom:0;left:50%;transform:translateX(-50%);width:100%;max-width:390px;padding:16px 20px 36px;background:linear-gradient(to top,var(--bg) 70%,transparent);z-index:40;">
         <button id="generateBtn" class="btn btn-primary btn-full" disabled>Generate my responses →</button>
       </div>
+    </div>
+  `
+}
+
+function renderContinueBanner(seed) {
+  return `
+    <div style="background:var(--blue-dim);border:1px solid var(--blue-border);border-radius:14px;padding:12px 13px;margin-bottom:16px;">
+      <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.12em;color:var(--blue);margin-bottom:5px;">Continuing conversation</div>
+      <div style="font-size:13px;font-weight:800;color:var(--text);line-height:1.4;">${escapeHtml(seed.threadTitle || seed.situationHint || 'Previous conversation')}</div>
+      <div style="font-size:11px;color:var(--text2);line-height:1.5;margin-top:4px;">For: ${escapeHtml(seed.recipientLabel || 'same recipient')} · On-device thread context will be used if available.</div>
     </div>
   `
 }
@@ -241,7 +252,7 @@ function renderStyleSection() {
   `
 }
 
-function renderRelationshipSection() {
+function renderRelationshipSection(seed = null) {
   return `
     <div style="margin-bottom:16px;">
       <div class="section-label">Who is this for?</div>
@@ -253,7 +264,7 @@ function renderRelationshipSection() {
         `).join('')}
       </div>
       <label style="display:block;font-size:11px;font-weight:700;color:var(--muted);margin:12px 0 6px;">Name, alias, or group</label>
-      <input id="recipientLabel" style="width:100%;background:var(--s3);border:1.5px solid var(--border);border-radius:10px;padding:11px;color:var(--text);font-family:var(--font-body);" placeholder="e.g. Sarah, Manager A, QA team">
+      <input id="recipientLabel" value="${escapeAttr(seed?.recipientLabel || '')}" style="width:100%;background:var(--s3);border:1.5px solid var(--border);border-radius:10px;padding:11px;color:var(--text);font-family:var(--font-body);" placeholder="e.g. Sarah, Manager A, QA team">
       <div style="font-size:10px;color:var(--muted2);line-height:1.5;margin-top:6px;">Use a real name or an alias. This stays encrypted on this device.</div>
     </div>
   `
@@ -261,13 +272,13 @@ function renderRelationshipSection() {
 
 // ── Bind ──────────────────────────────────────
 
-export function bindSession({ profile, onBack, onGenerate }) {
+export function bindSession({ profile, seed = null, onBack, onGenerate }) {
   // Restore session state from profile
   sessionState = {
     role: profile?.role || '',
     style: profile?.style || '',
-    relationship: '',
-    recipientLabel: '',
+    relationship: seed?.relationship || '',
+    recipientLabel: seed?.recipientLabel || '',
     situation: '',
     situationText: '',
     supportingDocs: {
@@ -275,7 +286,7 @@ export function bindSession({ profile, onBack, onGenerate }) {
       documentText: '',
       attachments: [],
     },
-    conversationThread: null,
+    conversationThread: seed?.conversationThread || null,
     inputMethod: 'voice',
     tab: 'voice',
   }
@@ -310,6 +321,8 @@ export function bindSession({ profile, onBack, onGenerate }) {
       checkCta()
     })
   })
+
+  applySeedSelection(seed)
 
   // Style cards
   document.querySelectorAll('.style-card').forEach(card => {
@@ -458,6 +471,28 @@ export function bindSession({ profile, onBack, onGenerate }) {
   checkCta()
 }
 
+function applySeedSelection(seed) {
+  if (!seed) return
+
+  if (seed.relationship) {
+    const chip = Array.from(document.querySelectorAll('.relationship-chip'))
+      .find(item => item.dataset.relationship === seed.relationship)
+    if (chip) {
+      chip.style.borderColor = 'var(--accent)'
+      chip.style.color = 'var(--accent)'
+      chip.style.background = 'var(--accent-dim)'
+    }
+  }
+
+  updateThreadChoices()
+
+  if (seed.situationHint) {
+    switchTab('text')
+    const textarea = document.getElementById('ftTa')
+    if (textarea) textarea.focus()
+  }
+}
+
 async function handleSupportingFiles(fileList) {
   const files = Array.from(fileList || [])
   if (!files.length) return
@@ -571,7 +606,7 @@ function updateThreadChoices() {
   const choices = document.getElementById('threadChoices')
   const ready = sessionState.relationship && sessionState.recipientLabel.length >= 2
 
-  sessionState.conversationThread = null
+  const selectedThreadId = sessionState.conversationThread?.id || ''
 
   if (!section || !choices) return
   if (!ready) {
@@ -582,10 +617,17 @@ function updateThreadChoices() {
 
   const recipientKey = makeRecipientKey(sessionState.relationship, sessionState.recipientLabel)
   const threads = getThreadsForRecipient(recipientKey).slice(0, 3)
+  const selectedThread = selectedThreadId ? threads.find(thread => thread.id === selectedThreadId) || sessionState.conversationThread : null
+  const visibleThreads = selectedThread && !threads.some(thread => thread.id === selectedThread.id)
+    ? [selectedThread, ...threads]
+    : threads
+  if (selectedThread) {
+    sessionState.conversationThread = selectedThread
+  }
   section.style.display = 'block'
   choices.innerHTML = [
-    renderThreadChoice(null, 'Start new thread', 'Begin a separate context for this topic.', true),
-    ...threads.map(thread => renderThreadChoice(thread.id, thread.title || 'Recent thread', thread.summary || thread.lastNextStep || 'Continue from recent context.', false)),
+    renderThreadChoice(null, 'Start new thread', 'Begin a separate context for this topic.', !selectedThreadId),
+    ...visibleThreads.map(thread => renderThreadChoice(thread.id, thread.title || 'Recent thread', thread.summary || thread.lastNextStep || 'Continue from recent context.', thread.id === selectedThreadId)),
   ].join('')
 
   choices.querySelectorAll('.thread-choice').forEach(choice => {
@@ -596,7 +638,7 @@ function updateThreadChoices() {
       })
       choice.style.borderColor = 'var(--blue)'
       choice.style.background = 'var(--blue-dim)'
-      sessionState.conversationThread = threads.find(thread => thread.id === choice.dataset.threadId) || null
+      sessionState.conversationThread = visibleThreads.find(thread => thread.id === choice.dataset.threadId) || null
     })
   })
 }

@@ -25,7 +25,7 @@ export function renderHistory({ history }) {
   `
 }
 
-export function bindHistory({ onBack, onNewSession }) {
+export function bindHistory({ onBack, onNewSession, onContinue }) {
   document.getElementById('historyBack')?.addEventListener('click', onBack)
   document.getElementById('historyStart')?.addEventListener('click', onNewSession)
 
@@ -39,6 +39,12 @@ export function bindHistory({ onBack, onNewSession }) {
   document.querySelectorAll('.history-share').forEach(btn => {
     btn.addEventListener('click', () => {
       openShare(btn.dataset.text || '')
+    })
+  })
+
+  document.querySelectorAll('.history-continue').forEach(btn => {
+    btn.addEventListener('click', () => {
+      onContinue?.(btn.dataset.id)
     })
   })
 }
@@ -63,6 +69,7 @@ function renderHistoryItem(item) {
       </div>
       <div style="font-size:12px;color:var(--text2);line-height:1.55;">${escapeHtml(item.situation || 'No situation saved')}</div>
       ${item.recipientLabel ? `<div style="font-size:11px;color:var(--muted);line-height:1.5;margin-top:6px;">Recipient: ${escapeHtml(item.recipientLabel)}</div>` : ''}
+      ${renderContinueAction(item)}
       ${renderHistoryContextActions(item)}
       ${renderSupportingDocsNote(item.supportingDocs)}
       ${renderHistoryMethod(item.frameworkDetail, item.framework)}
@@ -100,6 +107,7 @@ function renderResourceHistoryItem(item) {
       </div>
       <div style="font-size:12px;color:var(--text2);line-height:1.55;margin-bottom:12px;">${escapeHtml(item.situation || 'Document brief')}</div>
       ${item.recipientLabel ? `<div style="font-size:11px;color:var(--muted);line-height:1.5;margin:-6px 0 12px;">Recipient: ${escapeHtml(item.recipientLabel)}</div>` : ''}
+      ${renderContinueAction(item)}
       ${renderHistoryContextActions(item)}
       ${renderHistoryMethod(item.frameworkDetail || brief.methodFramework, item.framework)}
       ${renderHistoryRefinements(item.refinements)}
@@ -166,6 +174,17 @@ function renderSupportingDocsNote(supportingDocs) {
     <div style="background:var(--blue-dim);border:1px solid var(--blue-border);border-radius:10px;padding:8px 10px;margin-top:10px;font-size:11px;color:var(--text2);line-height:1.5;">
       <strong style="color:var(--blue);">Supporting docs used:</strong> ${escapeHtml(parts.join(' + '))}
     </div>
+  `
+}
+
+function renderContinueAction(item) {
+  const label = item.recipientLabel || item.receiver || 'this conversation'
+  const text = item.kind === 'resource' || item.resourceBrief
+    ? `Use brief with ${label}`
+    : `Continue with ${label}`
+
+  return `
+    <button class="btn btn-primary history-continue" data-id="${escapeAttr(String(item.id))}" style="width:100%;font-size:12px;margin-top:10px;box-shadow:0 4px 14px var(--accent-glow);">${escapeHtml(text)} →</button>
   `
 }
 

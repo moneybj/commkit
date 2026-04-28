@@ -35,6 +35,9 @@ export function renderResourceCenter({ brief = null, isLoading = false, error = 
           <label style="display:block;font-size:11px;font-weight:700;color:var(--muted);margin-bottom:6px;">Audience</label>
           <input id="resourceAudience" value="${escapeAttr(form.audience || '')}" style="width:100%;background:var(--s3);border:1.5px solid var(--border);border-radius:10px;padding:11px;color:var(--text);font-family:var(--font-body);margin-bottom:10px;" placeholder="e.g. lab manager, QA lead, client">
 
+          <label style="display:block;font-size:11px;font-weight:700;color:var(--muted);margin-bottom:6px;">Name, alias, or group</label>
+          <input id="resourceRecipient" value="${escapeAttr(form.recipientLabel || '')}" style="width:100%;background:var(--s3);border:1.5px solid var(--border);border-radius:10px;padding:11px;color:var(--text);font-family:var(--font-body);margin-bottom:10px;" placeholder="e.g. Manager A, QA team, Client group">
+
           <label style="display:block;font-size:11px;font-weight:700;color:var(--muted);margin-bottom:6px;">Relationship / context</label>
           <select id="resourceRelationship" style="width:100%;background:var(--s3);border:1.5px solid var(--border);border-radius:10px;padding:11px;color:var(--text);font-family:var(--font-body);margin-bottom:10px;">
             ${renderRelationshipOptions(form.relationship)}
@@ -87,6 +90,7 @@ export function bindResourceCenter({ onBack, onGenerate, onRefine }) {
     onGenerate({
       title: document.getElementById('resourceTitle')?.value.trim() || '',
       audience: document.getElementById('resourceAudience')?.value.trim() || '',
+      recipientLabel: document.getElementById('resourceRecipient')?.value.trim() || '',
       relationship: document.getElementById('resourceRelationship')?.value || '',
       documentText: document.getElementById('resourceDoc')?.value.trim() || '',
       context: document.getElementById('resourceContext')?.value.trim() || '',

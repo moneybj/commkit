@@ -33,11 +33,13 @@ export function renderResult({ result, situationLabel, profile, sessionData }) {
         <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.12em;color:var(--muted);margin-bottom:6px;">Signals active for this conversation</div>
         <div style="display:flex;flex-wrap:wrap;gap:6px;">
           ${profile?.style ? `<div class="tag style" style="cursor:default;">${escapeHtml(profile.style)}</div>` : ''}
-          ${sessionData?.relationship ? `<div class="tag strength" style="cursor:default;">For: ${escapeHtml(getRelationshipLabel(sessionData.relationship))}</div>` : ''}
+          ${sessionData?.relationship ? `<div class="tag strength" style="cursor:default;">For: ${escapeHtml(sessionData.recipientLabel || getRelationshipLabel(sessionData.relationship))}</div>` : ''}
           ${sessionData?.inputMethod === 'voice' ? `<div class="tag strength" style="cursor:default;">🎤 Voice input</div>` : `<div class="tag style" style="cursor:default;">✏️ Typed</div>`}
           <div class="tag growth" style="cursor:default;">📍 Session ${profile?.sessionCount || 1}</div>
         </div>
       </div>
+
+      ${sessionData?.recipientMemory ? renderMemoryNote(sessionData.recipientMemory, sessionData.recipientLabel) : ''}
 
       <!-- Detected context -->
       <div style="margin:13px 16px 0;background:var(--s2);border:1px solid var(--border);border-left:3px solid var(--accent);border-radius:12px;padding:12px 14px;display:flex;gap:10px;">
@@ -137,6 +139,15 @@ function getRelationshipLabel(relationship = '') {
     family: 'Family',
     friend: 'Friend',
   }[relationship] || relationship
+}
+
+function renderMemoryNote(memory, recipientLabel) {
+  return `
+    <div style="margin:10px 16px 0;background:var(--blue-dim);border:1px solid var(--blue-border);border-radius:12px;padding:10px 12px;">
+      <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.12em;color:var(--blue);margin-bottom:4px;">Using on-device history</div>
+      <div style="font-size:11px;color:var(--text2);line-height:1.55;">${escapeHtml(recipientLabel || memory.recipientLabel || 'This recipient')} · ${escapeHtml(memory.lastTopic || 'recent context')}</div>
+    </div>
+  `
 }
 
 function renderResponseCard(response, index, badgeClass) {
@@ -372,6 +383,7 @@ function renderNextActions() {
         <button id="nextNewSession" class="btn btn-primary" style="flex:1;font-size:12px;">New situation →</button>
         <button id="nextHome" class="btn" style="flex:1;font-size:12px;">View profile</button>
       </div>
+      <button id="nextCollateral" class="btn" style="width:100%;font-size:12px;margin-top:8px;border-color:var(--blue-border);background:var(--blue-dim);">Create summary, slides, talking points →</button>
       <button id="nextResource" class="btn" style="width:100%;font-size:12px;margin-top:8px;">Upload docs for summary + talking points →</button>
     </div>
   `
@@ -416,7 +428,7 @@ function renderFeedbackCard() {
 
 // ── Bind ──────────────────────────────────────
 
-export function bindResult({ onBack, onNewSession, onHome, onResource, onVersionUsed, onFormatChosen, onFrameworkOpened, onFeedback, onTagAccepted, onRefine }) {
+export function bindResult({ onBack, onNewSession, onHome, onResource, onVersionUsed, onFormatChosen, onFrameworkOpened, onFeedback, onTagAccepted, onRefine, onCollateral }) {
   // Back
   document.getElementById('resultBack')?.addEventListener('click', onBack)
 
@@ -543,6 +555,7 @@ export function bindResult({ onBack, onNewSession, onHome, onResource, onVersion
   // Next-step navigation
   document.getElementById('nextNewSession')?.addEventListener('click', onNewSession)
   document.getElementById('nextHome')?.addEventListener('click', onHome)
+  document.getElementById('nextCollateral')?.addEventListener('click', onCollateral)
   document.getElementById('nextResource')?.addEventListener('click', onResource)
 
   // Signal card

@@ -10,6 +10,7 @@ const KEYS = {
   TAGS:        'ck_tags',
   SESSIONS:    'ck_sessions',
   HISTORY:     'ck_history',
+  RECIPIENTS:  'ck_recipient_memory',
   INSTALLED:   'ck_installed',
   NUDGE_SHOWN: 'ck_install_dismissed',
   IOS_NUDGE:   'ck_ios_nudge_shown',
@@ -238,6 +239,8 @@ export function addToHistory(entry) {
         framework: entry.framework || null,
         frameworkDetail: entry.frameworkDetail || null,
         receiver: entry.receiver || null,
+        recipientLabel: entry.recipientLabel || entry.receiver || null,
+        recipientKey: entry.recipientKey || null,
         relationship: entry.relationship || null,
         responses: entry.responses || [],
         resourceBrief: entry.resourceBrief || null,
@@ -272,6 +275,54 @@ export function updateHistoryEntry(id, updates) {
     console.warn('[CommKit] Could not update history:', err)
     return getHistory()
   }
+}
+
+// ── Recipient memory ───────────────────────────
+
+export function makeRecipientKey(relationship = '', label = '') {
+  const relationshipPart = slugify(relationship || 'general')
+  const labelPart = slugify(label || relationship || 'unknown')
+  return `${relationshipPart}:${labelPart}`
+}
+
+export function getRecipientMemories() {
+  try {
+    const raw = readRaw(KEYS.RECIPIENTS)
+    return raw ? JSON.parse(raw) : {}
+  } catch {
+    return {}
+  }
+}
+
+export function getRecipientMemory(key) {
+  if (!key) return null
+  return getRecipientMemories()[key] || null
+}
+
+export function saveRecipientMemory(memory) {
+  if (!memory?.key) return getRecipientMemories()
+
+  const memories = getRecipientMemories()
+  const updated = {
+    ...memories,
+    [memory.key]: {
+      ...memory,
+      updatedAt: Date.now(),
+    },
+  }
+  const entries = Object.entries(updated).slice(0, 40)
+  const capped = Object.fromEntries(entries)
+  writeRaw(KEYS.RECIPIENTS, JSON.stringify(capped))
+  return capped
+}
+
+function slugify(value = '') {
+  return String(value)
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 48) || 'unknown'
 }
 
 // ── Install state ─────────────────────────────

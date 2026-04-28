@@ -56,9 +56,10 @@ function renderHistoryItem(item) {
         <div style="background:${relation.bg};color:${relation.color};border:1px solid ${relation.border};border-radius:999px;padding:4px 8px;font-size:10px;font-weight:800;white-space:nowrap;">${escapeHtml(relation.label)}</div>
       </div>
       <div style="font-size:12px;color:var(--text2);line-height:1.55;">${escapeHtml(item.situation || 'No situation saved')}</div>
+      ${item.recipientLabel ? `<div style="font-size:11px;color:var(--muted);line-height:1.5;margin-top:6px;">Recipient: ${escapeHtml(item.recipientLabel)}</div>` : ''}
       ${renderHistoryMethod(item.frameworkDetail, item.framework)}
       ${renderHistoryRefinements(item.refinements)}
-      <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.12em;color:var(--muted);margin:13px 0 8px;">Responses for ${escapeHtml(item.receiver || inferReceiverLabel(item.situation))}</div>
+      <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.12em;color:var(--muted);margin:13px 0 8px;">Responses for ${escapeHtml(item.recipientLabel || item.receiver || inferReceiverLabel(item.situation))}</div>
       ${responses.length ? `
         <div style="display:flex;flex-direction:column;gap:8px;">
           ${responses.map(renderHistoryResponse).join('')}
@@ -90,6 +91,7 @@ function renderResourceHistoryItem(item) {
         <div style="background:${relation.bg};color:${relation.color};border:1px solid ${relation.border};border-radius:999px;padding:4px 8px;font-size:10px;font-weight:800;white-space:nowrap;">${escapeHtml(relation.label)}</div>
       </div>
       <div style="font-size:12px;color:var(--text2);line-height:1.55;margin-bottom:12px;">${escapeHtml(item.situation || 'Document brief')}</div>
+      ${item.recipientLabel ? `<div style="font-size:11px;color:var(--muted);line-height:1.5;margin:-6px 0 12px;">Recipient: ${escapeHtml(item.recipientLabel)}</div>` : ''}
       ${renderHistoryMethod(item.frameworkDetail || brief.methodFramework, item.framework)}
       ${renderHistoryRefinements(item.refinements)}
 

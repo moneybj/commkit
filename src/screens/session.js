@@ -42,6 +42,7 @@ let sessionState = {
   role: '',
   style: '',
   relationship: '',
+  recipientLabel: '',
   situation: '',
   situationText: '',
   inputMethod: 'voice',
@@ -221,6 +222,9 @@ function renderRelationshipSection() {
           </button>
         `).join('')}
       </div>
+      <label style="display:block;font-size:11px;font-weight:700;color:var(--muted);margin:12px 0 6px;">Name, alias, or group</label>
+      <input id="recipientLabel" style="width:100%;background:var(--s3);border:1.5px solid var(--border);border-radius:10px;padding:11px;color:var(--text);font-family:var(--font-body);" placeholder="e.g. Sarah, Manager A, QA team">
+      <div style="font-size:10px;color:var(--muted2);line-height:1.5;margin-top:6px;">Use a real name or an alias. This stays encrypted on this device.</div>
     </div>
   `
 }
@@ -233,6 +237,7 @@ export function bindSession({ profile, onBack, onResource, onGenerate }) {
     role: profile?.role || '',
     style: profile?.style || '',
     relationship: '',
+    recipientLabel: '',
     situation: '',
     situationText: '',
     inputMethod: 'voice',
@@ -307,6 +312,11 @@ export function bindSession({ profile, onBack, onResource, onGenerate }) {
     })
   })
 
+  document.getElementById('recipientLabel')?.addEventListener('input', (event) => {
+    sessionState.recipientLabel = event.target.value.trim()
+    checkCta()
+  })
+
   // Situation grid
   document.querySelectorAll('.sit-item').forEach(item => {
     item.addEventListener('click', () => {
@@ -358,6 +368,7 @@ export function bindSession({ profile, onBack, onResource, onGenerate }) {
         situation:    sessionState.situation,
         situationText: sessionState.situationText || sessionState.situation,
         relationship: sessionState.relationship,
+        recipientLabel: sessionState.recipientLabel,
         inputMethod:  sessionState.inputMethod,
       })
     }
@@ -492,6 +503,7 @@ function showTranscriptActions() {
 function checkCta() {
   const hasSit = sessionState.situation || (sessionState.situationText && sessionState.situationText.length > 8)
   const hasRelationship = sessionState.relationship
+  const hasRecipient = sessionState.recipientLabel.length >= 2
   const hasRole = sessionState.role
   const hasStyle = sessionState.style
 
@@ -500,7 +512,7 @@ function checkCta() {
   const needsProfile = !!roleSection
 
   const profileOk = needsProfile ? (hasRole && hasStyle) : true
-  const ready = hasSit && hasRelationship && profileOk
+  const ready = hasSit && hasRelationship && hasRecipient && profileOk
 
   const btn = document.getElementById('generateBtn')
   if (btn) btn.disabled = !ready

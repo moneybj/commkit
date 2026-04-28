@@ -7,8 +7,9 @@
 /**
  * Build the structured prompt for Claude
  */
-export function buildPrompt({ role, style, situation, relationship, sessionCount, inputMethod }) {
+export function buildPrompt({ role, style, situation, relationship, recipientLabel, recipientMemory, sessionCount, inputMethod }) {
   const receiverContext = getReceiverContext({ situation, relationship })
+  const memoryBlock = formatRecipientMemory(recipientMemory)
 
   return `You are CommKit, a communication coach for professionals at every level. Generate responses for this exact situation.
 
@@ -16,10 +17,12 @@ USER PROFILE:
 - Role: ${role || 'Professional'}
 - Communication style: ${style || 'Balanced'}
 - Situation: ${situation}
+- Recipient label: ${recipientLabel || 'Not specified'}
 - Relationship / recipient type: ${getRelationshipLabel(relationship)}
 - Likely receiver: ${receiverContext}
 - Input method: ${inputMethod === 'voice' ? 'Spoken (voice transcription)' : 'Typed'}
 - Session number: ${sessionCount}
+${memoryBlock ? `\nRECIPIENT MEMORY (use lightly for continuity, do not overfit):\n${memoryBlock}` : ''}
 
 Generate a valid JSON object. Return ONLY raw JSON — no markdown fences, no preamble, no explanation.
 Keep every string concise so the JSON is complete and parseable. Exactly this structure:
@@ -82,6 +85,7 @@ Q&A RULES:
 - If the receiver is personal, family, or friend, remove corporate language and preserve the relationship.
 - If the likely receiver is the user's manager, make the questions sound like a manager: priorities, readiness, scope, timing, expectations, support.
 - If the likely receiver is a direct report or teammate, make the questions sound like that person: fairness, clarity, impact, next steps.
+- If recipient memory is present, add relational continuity without mentioning private history directly unless it is relevant.
 - Answers should be words the user can say back immediately.`
 }
 
@@ -149,8 +153,8 @@ export async function refineResponses({ profileData, currentResult, instruction,
   return postPrompt(prompt)
 }
 
-export async function generateResourceBrief({ title, audience, relationship, documentText, context, attachments = [] }) {
-  const prompt = buildResourcePrompt({ title, audience, relationship, documentText, context, attachments })
+export async function generateResourceBrief({ title, audience, recipientLabel, relationship, recipientMemory, documentText, context, source = 'document', attachments = [] }) {
+  const prompt = buildResourcePrompt({ title, audience, recipientLabel, relationship, recipientMemory, documentText, context, source, attachments })
   return postPrompt(prompt, attachments.filter(attachment => attachment.data))
 }
 
@@ -159,20 +163,24 @@ export async function refineResourceBrief({ originalInput, currentBrief, instruc
   return postPrompt(prompt)
 }
 
-function buildResourcePrompt({ title, audience, relationship, documentText, context, attachments = [] }) {
+function buildResourcePrompt({ title, audience, recipientLabel, relationship, recipientMemory, documentText, context, source = 'document', attachments = [] }) {
   const attachmentList = attachments.length
     ? attachments.map(file => `- ${file.name} (${file.mediaType || file.kind})`).join('\n')
     : '- None'
+  const memoryBlock = formatRecipientMemory(recipientMemory)
 
   return `You are CommKit Resource Center. Turn technical workplace material into clear communication assets.
 
 DOCUMENT CONTEXT:
 - Title: ${title || 'Technical review'}
 - Audience: ${audience || 'manager or stakeholder'}
+- Recipient label: ${recipientLabel || 'Not specified'}
 - Relationship / recipient type: ${getRelationshipLabel(relationship)}
+- Source: ${source === 'response' ? 'Generated CommKit response context' : 'Uploaded or pasted material'}
 - User context: ${context || 'The user needs to explain this clearly at work.'}
 - Uploaded files:
 ${attachmentList}
+${memoryBlock ? `\nRECIPIENT MEMORY (use lightly for continuity, do not overfit):\n${memoryBlock}` : ''}
 
 DOCUMENT TEXT:
 ${(documentText || 'No pasted text. Use the uploaded files if available.').slice(0, 6200)}
@@ -205,8 +213,10 @@ USER PROFILE:
 - Role: ${profileData.role || 'Professional'}
 - Communication style: ${profileData.style || 'Balanced'}
 - Original situation: ${profileData.situation || 'Workplace conversation'}
+- Recipient label: ${profileData.recipientLabel || 'Not specified'}
 - Relationship / recipient type: ${getRelationshipLabel(profileData.relationship)}
 - Input method: ${profileData.inputMethod === 'voice' ? 'Spoken' : 'Typed'}
+${profileData.recipientMemory ? `\nRECIPIENT MEMORY:\n${formatRecipientMemory(profileData.recipientMemory)}` : ''}
 
 CURRENT RESPONSE JSON:
 ${safeJsonForPrompt(currentResult, 4600)}
@@ -231,8 +241,10 @@ function buildResourceRefinementPrompt({ originalInput = {}, currentBrief, instr
 ORIGINAL CONTEXT:
 - Title: ${originalInput.title || 'Resource brief'}
 - Audience: ${originalInput.audience || 'stakeholder'}
+- Recipient label: ${originalInput.recipientLabel || 'Not specified'}
 - Relationship / recipient type: ${getRelationshipLabel(originalInput.relationship)}
 - User need: ${originalInput.context || 'Explain the material clearly'}
+${originalInput.recipientMemory ? `\nRECIPIENT MEMORY:\n${formatRecipientMemory(originalInput.recipientMemory)}` : ''}
 
 CURRENT BRIEF JSON:
 ${safeJsonForPrompt(currentBrief, 4600)}
@@ -288,6 +300,19 @@ async function postPrompt(prompt, attachments = []) {
 function safeJsonForPrompt(value, maxLength) {
   const json = JSON.stringify(value || {}, null, 2)
   return json.length > maxLength ? `${json.slice(0, maxLength)}\n...[truncated]` : json
+}
+
+function formatRecipientMemory(memory) {
+  if (!memory) return ''
+
+  const lines = [
+    memory.lastTopic ? `- Prior context: ${memory.lastTopic}` : '',
+    memory.preferredTone ? `- What worked before: ${memory.preferredTone}` : '',
+    memory.relationshipNote ? `- Relationship note: ${memory.relationshipNote}` : '',
+    memory.lastNextStep ? `- Last next step: ${memory.lastNextStep}` : '',
+  ].filter(Boolean)
+
+  return lines.slice(0, 4).join('\n')
 }
 
 function formatRefinementThread(refinements = []) {

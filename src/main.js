@@ -6,7 +6,7 @@
 
 import './style.css'
 
-import { clearEncryptedStorage, getProfile, hasProfile, incrementSession, getSessionCount, getTags, addTag, removeTag, getHistory, addToHistory, updateHistoryEntry, isEncryptionConfigured, isEncryptionUnlocked, setupLocalEncryption, unlockLocalEncryption, isInstalled, markInstalled, isNudgeDismissed, dismissNudge, isIosNudgeShown, markIosNudgeShown } from './utils/storage.js'
+import { clearEncryptedStorage, getProfile, hasProfile, incrementSession, getSessionCount, getTags, addTag, removeTag, getHistory, addToHistory, updateHistoryEntry, makeRecipientKey, getRecipientMemory, saveRecipientMemory, isEncryptionConfigured, isEncryptionUnlocked, setupLocalEncryption, unlockLocalEncryption, isInstalled, markInstalled, isNudgeDismissed, dismissNudge, isIosNudgeShown, markIosNudgeShown } from './utils/storage.js'
 import { initToast, showToast } from './utils/toast.js'
 import { initShare } from './utils/share.js'
 import { renderPrivacyLock, bindPrivacyLock } from './screens/privacyLock.js'
@@ -30,9 +30,14 @@ const appState = {
   currentProfileData: null,
   currentResourceInput: null,
   currentResourceBrief: null,
+  currentSelectedResponseLabel: '',
   sessionData: {
     situation: '',
     situationText: '',
+    relationship: '',
+    recipientLabel: '',
+    recipientKey: '',
+    recipientMemory: null,
     inputMethod: 'voice',
   },
 }
@@ -165,7 +170,13 @@ function showHome() {
   })
   bindHome({
     onStart: showSession,
-    onResource: showResourceCenter,
+    onResource: () => showResourceCenter({
+      form: {
+        audience: appState.sessionData.recipientLabel || '',
+        recipientLabel: appState.sessionData.recipientLabel || '',
+        relationship: appState.sessionData.relationship || '',
+      },
+    }),
     onHistory: showHistory,
     onRemoveTag: (label) => {
       removeTag(label)
@@ -209,8 +220,11 @@ function showSession() {
   appState.currentScreen = 'session'
 }
 
-async function handleGenerate({ situation, situationText, relationship, inputMethod }) {
-  appState.sessionData = { situation, situationText, relationship, inputMethod }
+async function handleGenerate({ situation, situationText, relationship, recipientLabel, inputMethod }) {
+  const recipientKey = makeRecipientKey(relationship, recipientLabel)
+  const recipientMemory = getRecipientMemory(recipientKey)
+  appState.sessionData = { situation, situationText, relationship, recipientLabel, recipientKey, recipientMemory, inputMethod }
+  appState.currentSelectedResponseLabel = ''
   const profile = getProfile()
   const sessionCount = getSessionCount() + 1
 
@@ -219,6 +233,8 @@ async function handleGenerate({ situation, situationText, relationship, inputMet
     style:        profile.style || 'Balanced',
     situation:    situationText || situation,
     relationship,
+    recipientLabel,
+    recipientMemory,
     sessionCount,
     inputMethod,
   }
@@ -250,11 +266,22 @@ async function handleGenerate({ situation, situationText, relationship, inputMet
       inputMethod,
       framework: resultWithThread.framework?.name,
       frameworkDetail: resultWithThread.framework || null,
-      receiver: getRelationshipLabel(relationship, situationText || situation),
+      receiver: recipientLabel,
+      recipientLabel,
+      recipientKey,
       relationship: relationship || getRelationshipCategory(situationText || situation),
       responses: getHistoryResponses(resultWithThread),
       refinements: [],
     })
+    saveRecipientMemory(buildRecipientMemory({
+      current: recipientMemory,
+      recipientKey,
+      recipientLabel,
+      relationship,
+      situation: situationText || situation,
+      result: resultWithThread,
+      profile,
+    }))
 
     appState.currentHistoryId = history[0]?.id || null
     appState.currentResult = resultWithThread
@@ -282,7 +309,21 @@ function showResult(result, situationLabel) {
     onHome: showHome,
     onResource: showResourceCenter,
     onVersionUsed: (versionLabel) => {
+      appState.currentSelectedResponseLabel = versionLabel
       recordSignal(SIGNAL_TYPES.RESPONSE_CHOSEN, versionLabel)
+      if (appState.currentHistoryId) {
+        updateHistoryEntry(appState.currentHistoryId, { versionUsed: versionLabel })
+      }
+      saveRecipientMemory(buildRecipientMemory({
+        current: getRecipientMemory(appState.sessionData.recipientKey),
+        recipientKey: appState.sessionData.recipientKey,
+        recipientLabel: appState.sessionData.recipientLabel,
+        relationship: appState.sessionData.relationship,
+        situation: appState.sessionData.situationText || appState.sessionData.situation,
+        result: appState.currentResult,
+        profile: getProfile(),
+        selectedLabel: versionLabel,
+      }))
       showToast('✓ Signal recorded')
     },
     onFormatChosen: (format) => {
@@ -299,6 +340,7 @@ function showResult(result, situationLabel) {
       showToast('✓ Tag added to your profile')
     },
     onRefine: handleResponseRefine,
+    onCollateral: handleResponseCollateral,
   })
   appState.currentScreen = 'result'
 }
@@ -335,6 +377,16 @@ async function handleResponseRefine(instruction) {
         refinements: nextRefinements,
       })
     }
+    saveRecipientMemory(buildRecipientMemory({
+      current: getRecipientMemory(appState.sessionData.recipientKey),
+      recipientKey: appState.sessionData.recipientKey,
+      recipientLabel: appState.sessionData.recipientLabel,
+      relationship: appState.sessionData.relationship,
+      situation: appState.sessionData.situationText || appState.sessionData.situation,
+      result: updated,
+      profile: getProfile(),
+      selectedLabel: appState.currentSelectedResponseLabel,
+    }))
     showToast('✓ Responses refined')
     showResult(updated, appState.sessionData.situation)
   } catch (err) {
@@ -343,7 +395,65 @@ async function handleResponseRefine(instruction) {
   }
 }
 
+async function handleResponseCollateral() {
+  const current = appState.currentResult
+  if (!current) return
+
+  const payload = {
+    title: `${current.situationTitle || 'Conversation'} collateral`,
+    audience: appState.sessionData.recipientLabel || getRelationshipLabel(appState.sessionData.relationship, ''),
+    recipientLabel: appState.sessionData.recipientLabel,
+    recipientKey: appState.sessionData.recipientKey,
+    relationship: appState.sessionData.relationship,
+    recipientMemory: getRecipientMemory(appState.sessionData.recipientKey),
+    source: 'response',
+    documentText: buildResponseCollateralContext(current),
+    context: `Create a summary, presentation outline, talking points, and email follow-up for ${appState.sessionData.recipientLabel || 'this recipient'}.`,
+    attachments: [],
+  }
+
+  appState.currentResourceInput = payload
+  showResourceCenter({ isLoading: true, form: payload })
+
+  try {
+    const brief = await generateResourceBrief(payload)
+    const briefWithThread = { ...brief, refinements: [] }
+    const history = addToHistory({
+      kind: 'resource',
+      situation: `Collateral for ${appState.sessionData.recipientLabel || 'recipient'} · ${current.situationTitle || 'Generated response'}`,
+      situationTitle: briefWithThread.title || 'Response Collateral',
+      inputMethod: 'response',
+      framework: briefWithThread.methodFramework?.name || 'Resource Center',
+      frameworkDetail: briefWithThread.methodFramework || null,
+      receiver: appState.sessionData.recipientLabel,
+      recipientLabel: appState.sessionData.recipientLabel,
+      recipientKey: appState.sessionData.recipientKey,
+      relationship: appState.sessionData.relationship,
+      resourceBrief: getHistoryResourceBrief(briefWithThread),
+      refinements: [],
+    })
+    appState.currentHistoryId = history[0]?.id || null
+    appState.currentResourceBrief = briefWithThread
+    showToast('✓ Collateral saved to history')
+    showResourceCenter({ brief: briefWithThread, form: payload })
+  } catch (err) {
+    console.error('[CommKit] Response collateral error:', err)
+    showResourceCenter({
+      error: err.message || 'Could not generate collateral. Please try again.',
+      form: payload,
+    })
+  }
+}
+
 async function handleResourceGenerate(payload) {
+  if (!payload.relationship || !payload.recipientLabel || payload.recipientLabel.length < 2) {
+    showResourceCenter({
+      error: 'Select the relationship and add a name, alias, or group first.',
+      form: payload,
+    })
+    return
+  }
+
   const hasText = payload.documentText && payload.documentText.length >= 40
   const hasSupportedAttachments = (payload.attachments || []).some(attachment => attachment.data)
 
@@ -358,23 +468,41 @@ async function handleResourceGenerate(payload) {
   showResourceCenter({ isLoading: true, form: payload })
 
   try {
-    const brief = await generateResourceBrief(payload)
+    const recipientKey = makeRecipientKey(payload.relationship, payload.recipientLabel)
+    const enrichedPayload = {
+      ...payload,
+      recipientKey,
+      recipientMemory: getRecipientMemory(recipientKey),
+    }
+    const brief = await generateResourceBrief(enrichedPayload)
     const briefWithThread = { ...brief, refinements: [] }
     const history = addToHistory({
       kind: 'resource',
-      situation: getResourceHistorySummary(payload),
+      situation: getResourceHistorySummary(enrichedPayload),
       situationTitle: briefWithThread.title || payload.title || 'Resource Brief',
       inputMethod: 'document',
       framework: briefWithThread.methodFramework?.name || 'Resource Center',
       frameworkDetail: briefWithThread.methodFramework || null,
-      receiver: payload.audience || getRelationshipLabel(payload.relationship, ''),
-      relationship: payload.relationship || getRelationshipCategory(`${payload.audience || ''} ${payload.context || ''}`),
+      receiver: enrichedPayload.recipientLabel || enrichedPayload.audience || getRelationshipLabel(enrichedPayload.relationship, ''),
+      recipientLabel: enrichedPayload.recipientLabel,
+      recipientKey,
+      relationship: enrichedPayload.relationship || getRelationshipCategory(`${enrichedPayload.audience || ''} ${enrichedPayload.context || ''}`),
       resourceBrief: getHistoryResourceBrief(briefWithThread),
       refinements: [],
     })
     appState.currentHistoryId = history[0]?.id || null
-    appState.currentResourceInput = payload
+    appState.currentResourceInput = enrichedPayload
     appState.currentResourceBrief = briefWithThread
+    saveRecipientMemory(buildRecipientMemory({
+      current: getRecipientMemory(recipientKey),
+      recipientKey,
+      recipientLabel: enrichedPayload.recipientLabel,
+      relationship: enrichedPayload.relationship,
+      situation: getResourceHistorySummary(enrichedPayload),
+      result: briefWithThread,
+      profile: getProfile(),
+      source: 'resource',
+    }))
     showToast('✓ Brief saved to history')
     showResourceCenter({ brief: briefWithThread })
   } catch (err) {
@@ -418,6 +546,16 @@ async function handleResourceRefine(instruction) {
         refinements: nextRefinements,
       })
     }
+    saveRecipientMemory(buildRecipientMemory({
+      current: getRecipientMemory(appState.currentResourceInput?.recipientKey),
+      recipientKey: appState.currentResourceInput?.recipientKey,
+      recipientLabel: appState.currentResourceInput?.recipientLabel,
+      relationship: appState.currentResourceInput?.relationship,
+      situation: getResourceHistorySummary(appState.currentResourceInput || {}),
+      result: updated,
+      profile: getProfile(),
+      source: 'resource',
+    }))
     showToast('✓ Brief refined')
     showResourceCenter({ brief: updated })
   } catch (err) {
@@ -432,6 +570,75 @@ function getResourceHistorySummary(payload) {
   const audience = payload.audience ? ` for ${payload.audience}` : ''
   const files = fileCount ? ` · ${fileCount} file${fileCount === 1 ? '' : 's'}` : ''
   return `${title}${audience}${files}`
+}
+
+function buildRecipientMemory({ current = null, recipientKey, recipientLabel, relationship, situation, result, profile, selectedLabel = '', source = 'conversation' }) {
+  if (!recipientKey) return null
+
+  const title = result?.situationTitle || result?.title || situation || 'Recent conversation'
+  const selectedTone = selectedLabel || result?.responses?.[1]?.tone || result?.responses?.[0]?.tone || profile?.style || ''
+  const topic = compactText(title, 92)
+  const lastNextStep = getMemoryNextStep(result, source)
+
+  return {
+    key: recipientKey,
+    recipientLabel,
+    relationship,
+    lastTopic: topic,
+    preferredTone: compactText(selectedTone ? `${selectedTone} tone has been useful` : current?.preferredTone || '', 90),
+    relationshipNote: compactText(getRelationshipMemoryNote(relationship, profile?.style) || current?.relationshipNote || '', 120),
+    lastNextStep: compactText(lastNextStep || current?.lastNextStep || '', 120),
+    interactionCount: (current?.interactionCount || 0) + 1,
+  }
+}
+
+function getMemoryNextStep(result, source) {
+  if (source === 'resource') {
+    const firstPoint = Array.isArray(result?.talkingPoints) ? result.talkingPoints[0] : ''
+    return firstPoint || result?.refinementNote || 'Prepared collateral for follow-up.'
+  }
+
+  const firstAnswer = Array.isArray(result?.qaItems) ? result.qaItems[0]?.answer : ''
+  return firstAnswer || result?.coachingTip || result?.refinementNote || 'Prepared a response for the next conversation.'
+}
+
+function getRelationshipMemoryNote(relationship, style) {
+  const styleText = style ? `${style.toLowerCase()} style` : 'clear tone'
+  const notes = {
+    manager: `Use ${styleText}; stay accountable without sounding defensive.`,
+    peer: `Use ${styleText}; protect trust and keep next steps clear.`,
+    'direct-report': `Use ${styleText}; be clear, fair, and coaching-oriented.`,
+    client: `Use ${styleText}; keep confidence and ownership visible.`,
+    professional: `Use ${styleText}; keep it concise and action-oriented.`,
+    personal: `Use ${styleText}; avoid corporate language and protect the relationship.`,
+    family: `Use ${styleText}; keep it human, patient, and specific.`,
+    friend: `Use ${styleText}; sound natural and preserve trust.`,
+  }
+  return notes[relationship] || ''
+}
+
+function buildResponseCollateralContext(result) {
+  const responses = getHistoryResponses(result)
+  const selected = responses.find(response => response.label === appState.currentSelectedResponseLabel)
+  const response = selected || responses[1] || responses[0]
+  const qaText = Array.isArray(result?.qaItems)
+    ? result.qaItems.slice(0, 2).map(item => `Q: ${item.question}\nA: ${item.answer}`).join('\n')
+    : ''
+
+  return [
+    `Situation: ${appState.sessionData.situationText || appState.sessionData.situation}`,
+    `Recipient: ${appState.sessionData.recipientLabel || 'recipient'}`,
+    `Relationship: ${getRelationshipLabel(appState.sessionData.relationship, '')}`,
+    result?.framework?.name ? `Framework: ${result.framework.name}` : '',
+    response ? `Selected response:\n${response.text}` : '',
+    result?.coachingTip ? `Coaching tip: ${result.coachingTip}` : '',
+    qaText ? `Questions to expect:\n${qaText}` : '',
+  ].filter(Boolean).join('\n\n')
+}
+
+function compactText(value = '', maxLength = 120) {
+  const text = String(value || '').replace(/\s+/g, ' ').trim()
+  return text.length > maxLength ? `${text.slice(0, maxLength - 1)}…` : text
 }
 
 // ── Service Worker ───────────────────────────

@@ -38,6 +38,7 @@ const appState = {
     recipientLabel: '',
     recipientKey: '',
     recipientMemory: null,
+    supportingDocs: null,
     inputMethod: 'voice',
   },
 }
@@ -54,6 +55,7 @@ async function boot() {
       <div class="status-icons"><span>●●●●</span><span>WiFi</span><span>🔋</span></div>
     </div>
     <div id="screenMount"></div>
+    <button id="feedbackButton" aria-label="Send feedback to CommKit" style="position:absolute;right:18px;bottom:86px;z-index:80;background:var(--s2);border:1px solid var(--border);border-radius:999px;color:var(--text2);font-family:var(--font-body);font-size:11px;font-weight:800;padding:8px 11px;box-shadow:0 8px 22px rgba(0,0,0,.35);cursor:pointer;">CommKit feedback</button>
   `
 
   // Update clock every minute
@@ -65,6 +67,7 @@ async function boot() {
   // Init utilities
   initToast()
   initShare()
+  initFeedbackButton()
 
   if (!isEncryptionUnlocked()) {
     if (isEncryptionConfigured()) {
@@ -170,13 +173,6 @@ function showHome() {
   })
   bindHome({
     onStart: showSession,
-    onResource: () => showResourceCenter({
-      form: {
-        audience: appState.sessionData.recipientLabel || '',
-        recipientLabel: appState.sessionData.recipientLabel || '',
-        relationship: appState.sessionData.relationship || '',
-      },
-    }),
     onHistory: showHistory,
     onRemoveTag: (label) => {
       removeTag(label)
@@ -214,16 +210,15 @@ function showSession() {
   bindSession({
     profile: appState.profile,
     onBack: hasProfile() ? showHome : showWelcome,
-    onResource: showResourceCenter,
     onGenerate: handleGenerate,
   })
   appState.currentScreen = 'session'
 }
 
-async function handleGenerate({ situation, situationText, relationship, recipientLabel, inputMethod }) {
+async function handleGenerate({ situation, situationText, relationship, recipientLabel, supportingDocs, inputMethod }) {
   const recipientKey = makeRecipientKey(relationship, recipientLabel)
   const recipientMemory = getRecipientMemory(recipientKey)
-  appState.sessionData = { situation, situationText, relationship, recipientLabel, recipientKey, recipientMemory, inputMethod }
+  appState.sessionData = { situation, situationText, relationship, recipientLabel, recipientKey, recipientMemory, supportingDocs, inputMethod }
   appState.currentSelectedResponseLabel = ''
   const profile = getProfile()
   const sessionCount = getSessionCount() + 1
@@ -235,6 +230,7 @@ async function handleGenerate({ situation, situationText, relationship, recipien
     relationship,
     recipientLabel,
     recipientMemory,
+    supportingDocs,
     sessionCount,
     inputMethod,
   }
@@ -270,6 +266,7 @@ async function handleGenerate({ situation, situationText, relationship, recipien
       recipientLabel,
       recipientKey,
       relationship: relationship || getRelationshipCategory(situationText || situation),
+      supportingDocs: getSupportingDocsSummary(supportingDocs),
       responses: getHistoryResponses(resultWithThread),
       refinements: [],
     })
@@ -307,7 +304,6 @@ function showResult(result, situationLabel) {
     onBack: showSession,
     onNewSession: showSession,
     onHome: showHome,
-    onResource: showResourceCenter,
     onVersionUsed: (versionLabel) => {
       appState.currentSelectedResponseLabel = versionLabel
       recordSignal(SIGNAL_TYPES.RESPONSE_CHOSEN, versionLabel)
@@ -398,6 +394,7 @@ async function handleResponseRefine(instruction) {
 async function handleResponseCollateral() {
   const current = appState.currentResult
   if (!current) return
+  const supportingDocs = appState.sessionData.supportingDocs || {}
 
   const payload = {
     title: `${current.situationTitle || 'Conversation'} collateral`,
@@ -407,9 +404,9 @@ async function handleResponseCollateral() {
     relationship: appState.sessionData.relationship,
     recipientMemory: getRecipientMemory(appState.sessionData.recipientKey),
     source: 'response',
-    documentText: buildResponseCollateralContext(current),
+    documentText: buildResponseCollateralContext(current, supportingDocs),
     context: `Create a summary, presentation outline, talking points, and email follow-up for ${appState.sessionData.recipientLabel || 'this recipient'}.`,
-    attachments: [],
+    attachments: (supportingDocs.attachments || []).filter(attachment => attachment.data),
   }
 
   appState.currentResourceInput = payload
@@ -423,7 +420,7 @@ async function handleResponseCollateral() {
       situation: `Collateral for ${appState.sessionData.recipientLabel || 'recipient'} · ${current.situationTitle || 'Generated response'}`,
       situationTitle: briefWithThread.title || 'Response Collateral',
       inputMethod: 'response',
-      framework: briefWithThread.methodFramework?.name || 'Resource Center',
+      framework: briefWithThread.methodFramework?.name || 'Supporting Docs',
       frameworkDetail: briefWithThread.methodFramework || null,
       receiver: appState.sessionData.recipientLabel,
       recipientLabel: appState.sessionData.recipientLabel,
@@ -479,9 +476,9 @@ async function handleResourceGenerate(payload) {
     const history = addToHistory({
       kind: 'resource',
       situation: getResourceHistorySummary(enrichedPayload),
-      situationTitle: briefWithThread.title || payload.title || 'Resource Brief',
+      situationTitle: briefWithThread.title || payload.title || 'Supporting Brief',
       inputMethod: 'document',
-      framework: briefWithThread.methodFramework?.name || 'Resource Center',
+      framework: briefWithThread.methodFramework?.name || 'Supporting Docs',
       frameworkDetail: briefWithThread.methodFramework || null,
       receiver: enrichedPayload.recipientLabel || enrichedPayload.audience || getRelationshipLabel(enrichedPayload.relationship, ''),
       recipientLabel: enrichedPayload.recipientLabel,
@@ -506,9 +503,9 @@ async function handleResourceGenerate(payload) {
     showToast('✓ Brief saved to history')
     showResourceCenter({ brief: briefWithThread })
   } catch (err) {
-    console.error('[CommKit] Resource Center error:', err)
+    console.error('[CommKit] Supporting Docs error:', err)
     showResourceCenter({
-      error: err.message || 'Could not generate resource brief. Please try again.',
+      error: err.message || 'Could not generate supporting brief. Please try again.',
       form: payload,
     })
   }
@@ -516,7 +513,7 @@ async function handleResourceGenerate(payload) {
 
 async function handleResourceRefine(instruction) {
   const current = appState.currentResourceBrief
-  if (!current) throw new Error('No resource brief to refine yet')
+  if (!current) throw new Error('No supporting brief to refine yet')
 
   try {
     const refinements = current.refinements || []
@@ -539,8 +536,8 @@ async function handleResourceRefine(instruction) {
     appState.currentResourceBrief = updated
     if (appState.currentHistoryId) {
       updateHistoryEntry(appState.currentHistoryId, {
-        situationTitle: updated.title || 'Resource Brief',
-        framework: updated.methodFramework?.name || 'Resource Center',
+        situationTitle: updated.title || 'Supporting Brief',
+        framework: updated.methodFramework?.name || 'Supporting Docs',
         frameworkDetail: updated.methodFramework || null,
         resourceBrief: getHistoryResourceBrief(updated),
         refinements: nextRefinements,
@@ -570,6 +567,30 @@ function getResourceHistorySummary(payload) {
   const audience = payload.audience ? ` for ${payload.audience}` : ''
   const files = fileCount ? ` · ${fileCount} file${fileCount === 1 ? '' : 's'}` : ''
   return `${title}${audience}${files}`
+}
+
+function getSupportingDocsSummary(supportingDocs = {}) {
+  const attachments = supportingDocs.attachments || []
+  const fileNames = attachments.map(file => file.name).filter(Boolean)
+  const hasText = !!String(supportingDocs.documentText || '').trim()
+
+  if (!fileNames.length && !hasText) return null
+
+  return {
+    fileCount: fileNames.length,
+    fileNames: fileNames.slice(0, 4),
+    hasPastedNotes: hasText,
+  }
+}
+
+function initFeedbackButton() {
+  document.getElementById('feedbackButton')?.addEventListener('click', () => {
+    const local = 'contact_bj'
+    const domain = 'yahoo.com'
+    const subject = encodeURIComponent('CommKit feedback')
+    const body = encodeURIComponent('Hi CommKit,\n\n')
+    window.location.href = `mailto:${local}@${domain}?subject=${subject}&body=${body}`
+  })
 }
 
 function buildRecipientMemory({ current = null, recipientKey, recipientLabel, relationship, situation, result, profile, selectedLabel = '', source = 'conversation' }) {
@@ -617,18 +638,25 @@ function getRelationshipMemoryNote(relationship, style) {
   return notes[relationship] || ''
 }
 
-function buildResponseCollateralContext(result) {
+function buildResponseCollateralContext(result, supportingDocs = {}) {
   const responses = getHistoryResponses(result)
   const selected = responses.find(response => response.label === appState.currentSelectedResponseLabel)
   const response = selected || responses[1] || responses[0]
   const qaText = Array.isArray(result?.qaItems)
     ? result.qaItems.slice(0, 2).map(item => `Q: ${item.question}\nA: ${item.answer}`).join('\n')
     : ''
+  const supportingText = String(supportingDocs.documentText || '').trim().slice(0, 2600)
+  const supportingFiles = (supportingDocs.attachments || [])
+    .map(file => file.name)
+    .filter(Boolean)
+    .slice(0, 5)
 
   return [
     `Situation: ${appState.sessionData.situationText || appState.sessionData.situation}`,
     `Recipient: ${appState.sessionData.recipientLabel || 'recipient'}`,
     `Relationship: ${getRelationshipLabel(appState.sessionData.relationship, '')}`,
+    supportingFiles.length ? `Supporting files: ${supportingFiles.join(', ')}` : '',
+    supportingText ? `Supporting notes:\n${supportingText}` : '',
     result?.framework?.name ? `Framework: ${result.framework.name}` : '',
     response ? `Selected response:\n${response.text}` : '',
     result?.coachingTip ? `Coaching tip: ${result.coachingTip}` : '',
@@ -807,7 +835,7 @@ function getHistoryResponses(result) {
 
 function getHistoryResourceBrief(brief) {
   return {
-    title: brief.title || 'Resource Brief',
+    title: brief.title || 'Supporting Brief',
     methodFramework: brief.methodFramework || null,
     summary: Array.isArray(brief.summary) ? brief.summary : [],
     presentationOutline: Array.isArray(brief.presentationOutline) ? brief.presentationOutline : [],

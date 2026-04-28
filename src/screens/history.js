@@ -57,6 +57,7 @@ function renderHistoryItem(item) {
       </div>
       <div style="font-size:12px;color:var(--text2);line-height:1.55;">${escapeHtml(item.situation || 'No situation saved')}</div>
       ${item.recipientLabel ? `<div style="font-size:11px;color:var(--muted);line-height:1.5;margin-top:6px;">Recipient: ${escapeHtml(item.recipientLabel)}</div>` : ''}
+      ${renderSupportingDocsNote(item.supportingDocs)}
       ${renderHistoryMethod(item.frameworkDetail, item.framework)}
       ${renderHistoryRefinements(item.refinements)}
       <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.12em;color:var(--muted);margin:13px 0 8px;">Responses for ${escapeHtml(item.recipientLabel || item.receiver || inferReceiverLabel(item.situation))}</div>
@@ -85,7 +86,7 @@ function renderResourceHistoryItem(item) {
       <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:7px;">
         <div style="width:34px;height:34px;border-radius:10px;background:${relation.bg};color:${relation.color};display:flex;align-items:center;justify-content:center;flex-shrink:0;">📄</div>
         <div style="flex:1;min-width:0;">
-          <div style="font-size:13px;font-weight:800;color:var(--text);margin-bottom:3px;">${escapeHtml(item.situationTitle || brief.title || 'Resource Brief')}</div>
+          <div style="font-size:13px;font-weight:800;color:var(--text);margin-bottom:3px;">${escapeHtml(item.situationTitle || brief.title || 'Supporting Brief')}</div>
           <div style="font-size:11px;color:var(--muted);line-height:1.5;">${escapeHtml(formatDate(item.timestamp))} · ${escapeHtml(item.framework || item.receiver || 'stakeholder')}</div>
         </div>
         <div style="background:${relation.bg};color:${relation.color};border:1px solid ${relation.border};border-radius:999px;padding:4px 8px;font-size:10px;font-weight:800;white-space:nowrap;">${escapeHtml(relation.label)}</div>
@@ -137,6 +138,25 @@ function renderHistoryRefinements(refinements = []) {
           </div>
         `).join('')}
       </div>
+    </div>
+  `
+}
+
+function renderSupportingDocsNote(supportingDocs) {
+  if (!supportingDocs) return ''
+
+  const fileCount = supportingDocs.fileCount || 0
+  const hasPastedNotes = !!supportingDocs.hasPastedNotes
+  const parts = [
+    fileCount ? `${fileCount} file${fileCount === 1 ? '' : 's'}` : '',
+    hasPastedNotes ? 'pasted notes' : '',
+  ].filter(Boolean)
+
+  if (!parts.length) return ''
+
+  return `
+    <div style="background:var(--blue-dim);border:1px solid var(--blue-border);border-radius:10px;padding:8px 10px;margin-top:10px;font-size:11px;color:var(--text2);line-height:1.5;">
+      <strong style="color:var(--blue);">Supporting docs used:</strong> ${escapeHtml(parts.join(' + '))}
     </div>
   `
 }

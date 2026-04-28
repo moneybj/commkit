@@ -242,6 +242,7 @@ export function addToHistory(entry) {
         recipientLabel: entry.recipientLabel || entry.receiver || null,
         recipientKey: entry.recipientKey || null,
         relationship: entry.relationship || null,
+        supportingDocs: entry.supportingDocs || null,
         responses: entry.responses || [],
         resourceBrief: entry.resourceBrief || null,
         refinements: entry.refinements || [],

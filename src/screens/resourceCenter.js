@@ -1,6 +1,6 @@
 /**
- * CommKit Resource Center
- * Document-to-summary, presentation, talking points, and email.
+ * CommKit Supporting Docs
+ * Turns conversation context and supporting material into collateral.
  */
 
 import { copyToClipboard } from '../utils/share.js'
@@ -17,16 +17,16 @@ export function renderResourceCenter({ brief = null, isLoading = false, error = 
       <div style="position:sticky;top:0;z-index:10;background:var(--bg);border-bottom:1px solid var(--border);padding:18px 0 14px;display:flex;align-items:center;gap:12px;backdrop-filter:blur(12px);">
         <button id="resourceBack" style="width:36px;height:36px;border-radius:50%;background:var(--s2);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:17px;cursor:pointer;color:var(--text2);">←</button>
         <div>
-          <div style="font-family:var(--font-display);font-size:24px;font-weight:700;color:var(--text);line-height:1.05;">Resource Center</div>
-          <div style="font-size:11px;color:var(--muted);margin-top:3px;">Docs → summary, slides, talking points</div>
+          <div style="font-family:var(--font-display);font-size:24px;font-weight:700;color:var(--text);line-height:1.05;">Supporting Docs</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:3px;">Conversation context → summary, slides, talking points</div>
         </div>
       </div>
 
       <section style="padding-top:16px;">
         <div style="background:var(--s2);border:1.5px solid var(--border);border-radius:16px;padding:15px;margin-bottom:14px;">
-          <div class="section-label">Upload or paste</div>
+          <div class="section-label">Attached context</div>
           <div style="font-size:12px;color:var(--muted);line-height:1.6;margin-bottom:12px;">
-            Best for QC reviews, lab notes, SOP updates, incident summaries, and technical findings. Upload text files, PDFs, photos, screenshots, or use your camera to scan documents.
+            Best after CommKit generates responses. Add any extra material only if it helps shape the summary, slides, talking points, or email.
           </div>
 
           <label style="display:block;font-size:11px;font-weight:700;color:var(--muted);margin-bottom:6px;">Document title</label>
@@ -43,10 +43,10 @@ export function renderResourceCenter({ brief = null, isLoading = false, error = 
             ${renderRelationshipOptions(form.relationship)}
           </select>
 
-          <label style="display:block;font-size:11px;font-weight:700;color:var(--muted);margin-bottom:6px;">Upload documents or images</label>
+          <label style="display:block;font-size:11px;font-weight:700;color:var(--muted);margin-bottom:6px;">Attach extra documents or images</label>
           <input id="resourceFile" type="file" multiple accept=".txt,.md,.csv,.json,.log,.pdf,.doc,.docx,image/*,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document" style="width:100%;font-size:12px;color:var(--muted);margin-bottom:10px;">
 
-          <label style="display:block;font-size:11px;font-weight:700;color:var(--muted);margin-bottom:6px;">Use camera / scan document</label>
+          <label style="display:block;font-size:11px;font-weight:700;color:var(--muted);margin-bottom:6px;">Use camera / scan extra context</label>
           <input id="resourceCamera" type="file" accept="image/*" capture="environment" multiple style="width:100%;font-size:12px;color:var(--muted);margin-bottom:10px;">
           <div id="resourceFileName" style="font-size:11px;color:var(--green);line-height:1.5;margin-bottom:10px;${selectedAttachments.length ? '' : 'display:none;'}">${renderAttachmentSummary(selectedAttachments)}</div>
 
@@ -54,7 +54,7 @@ export function renderResourceCenter({ brief = null, isLoading = false, error = 
             PDF and image files are sent to Claude for reading. DOC/DOCX uploads are accepted, but for this beta paste the relevant text or export to PDF for best results.
           </div>
 
-          <label style="display:block;font-size:11px;font-weight:700;color:var(--muted);margin-bottom:6px;">Paste document text</label>
+          <label style="display:block;font-size:11px;font-weight:700;color:var(--muted);margin-bottom:6px;">Paste supporting text</label>
           <textarea id="resourceDoc" style="background:var(--s3);border:1.5px solid var(--border);border-radius:10px;padding:11px;min-height:150px;margin-bottom:10px;" placeholder="Paste QC review notes, lab findings, SOP changes, investigation summary...">${escapeHtml(form.documentText || '')}</textarea>
 
           <label style="display:block;font-size:11px;font-weight:700;color:var(--muted);margin-bottom:6px;">What do you need to do with it?</label>
@@ -62,7 +62,7 @@ export function renderResourceCenter({ brief = null, isLoading = false, error = 
 
           ${error ? `<div style="background:var(--error-dim);border:1px solid var(--error-border);border-radius:10px;padding:10px 11px;color:var(--error);font-size:12px;line-height:1.5;margin-bottom:12px;">${escapeHtml(error)}</div>` : ''}
 
-          <button id="resourceGenerate" class="btn btn-primary btn-full" ${isLoading ? 'disabled' : ''}>${isLoading ? 'Generating brief...' : 'Generate resource brief →'}</button>
+          <button id="resourceGenerate" class="btn btn-primary btn-full" ${isLoading ? 'disabled' : ''}>${isLoading ? 'Generating brief...' : 'Generate supporting brief →'}</button>
         </div>
       </section>
 

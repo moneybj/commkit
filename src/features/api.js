@@ -7,9 +7,10 @@
 /**
  * Build the structured prompt for Claude
  */
-export function buildPrompt({ role, style, situation, relationship, recipientLabel, recipientMemory, sessionCount, inputMethod }) {
+export function buildPrompt({ role, style, situation, relationship, recipientLabel, recipientMemory, supportingDocs = {}, sessionCount, inputMethod }) {
   const receiverContext = getReceiverContext({ situation, relationship })
   const memoryBlock = formatRecipientMemory(recipientMemory)
+  const docsBlock = formatSupportingDocs(supportingDocs)
 
   return `You are CommKit, a communication coach for professionals at every level. Generate responses for this exact situation.
 
@@ -23,6 +24,7 @@ USER PROFILE:
 - Input method: ${inputMethod === 'voice' ? 'Spoken (voice transcription)' : 'Typed'}
 - Session number: ${sessionCount}
 ${memoryBlock ? `\nRECIPIENT MEMORY (use lightly for continuity, do not overfit):\n${memoryBlock}` : ''}
+${docsBlock ? `\nSUPPORTING DOCS (use as context for the response, do not summarize unless needed):\n${docsBlock}` : ''}
 
 Generate a valid JSON object. Return ONLY raw JSON — no markdown fences, no preamble, no explanation.
 Keep every string concise so the JSON is complete and parseable. Exactly this structure:
@@ -86,6 +88,7 @@ Q&A RULES:
 - If the likely receiver is the user's manager, make the questions sound like a manager: priorities, readiness, scope, timing, expectations, support.
 - If the likely receiver is a direct report or teammate, make the questions sound like that person: fairness, clarity, impact, next steps.
 - If recipient memory is present, add relational continuity without mentioning private history directly unless it is relevant.
+- If supporting docs are present, use them to make the response more specific, but keep the answer conversational.
 - Answers should be words the user can say back immediately.`
 }
 
@@ -145,7 +148,8 @@ function inferReceiverContext(situation = '') {
  */
 export async function generateResponses(profileData) {
   const prompt = buildPrompt(profileData)
-  return postPrompt(prompt)
+  const attachments = profileData.supportingDocs?.attachments || []
+  return postPrompt(prompt, attachments.filter(attachment => attachment.data))
 }
 
 export async function refineResponses({ profileData, currentResult, instruction, refinements = [] }) {
@@ -169,7 +173,7 @@ function buildResourcePrompt({ title, audience, recipientLabel, relationship, re
     : '- None'
   const memoryBlock = formatRecipientMemory(recipientMemory)
 
-  return `You are CommKit Resource Center. Turn technical workplace material into clear communication assets.
+  return `You are CommKit Supporting Docs. Turn supporting material into clear communication assets.
 
 DOCUMENT CONTEXT:
 - Title: ${title || 'Technical review'}
@@ -236,7 +240,7 @@ Do not lose shortText or emailText. Keep each response useful for the likely rec
 }
 
 function buildResourceRefinementPrompt({ originalInput = {}, currentBrief, instruction, refinements = [] }) {
-  return `You are CommKit Resource Center, refining an existing document brief through a follow-up conversation.
+  return `You are CommKit Supporting Docs, refining an existing document brief through a follow-up conversation.
 
 ORIGINAL CONTEXT:
 - Title: ${originalInput.title || 'Resource brief'}
@@ -255,7 +259,7 @@ ${formatRefinementThread(refinements)}
 USER FOLLOW-UP REQUEST:
 ${instruction}
 
-Return ONLY valid raw JSON, no markdown. Keep the same resource brief structure and revise the summary, presentation outline, talking points, email draft, and questions as needed.
+Return ONLY valid raw JSON, no markdown. Keep the same supporting brief structure and revise the summary, presentation outline, talking points, email draft, and questions as needed.
 Include "methodFramework" with:
 - "name": model/framework used
 - "source": credible source or communication model
@@ -313,6 +317,18 @@ function formatRecipientMemory(memory) {
   ].filter(Boolean)
 
   return lines.slice(0, 4).join('\n')
+}
+
+function formatSupportingDocs(supportingDocs = {}) {
+  const attachments = supportingDocs.attachments || []
+  const names = attachments.map(file => file.name).filter(Boolean).slice(0, 4)
+  const text = String(supportingDocs.documentText || '').trim().slice(0, 1400)
+  const lines = [
+    names.length ? `- Attached files/photos: ${names.join(', ')}` : '',
+    text ? `- Pasted notes: ${text}` : '',
+  ].filter(Boolean)
+
+  return lines.join('\n')
 }
 
 function formatRefinementThread(refinements = []) {

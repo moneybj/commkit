@@ -45,6 +45,10 @@ let sessionState = {
   recipientLabel: '',
   situation: '',
   situationText: '',
+  supportingDocs: {
+    documentText: '',
+    attachments: [],
+  },
   inputMethod: 'voice',
   tab: 'voice',
 }
@@ -72,15 +76,6 @@ export function renderSession({ profile }) {
         ${hasProfile ? renderProfileBar(profile) : ''}
         ${!hasProfile ? renderRoleSection() : ''}
         ${!hasProfile ? renderStyleSection() : ''}
-
-        <button id="sessionResource" style="width:100%;text-align:left;background:linear-gradient(135deg,var(--s2),var(--s3));border:1.5px solid var(--border);border-top:2px solid var(--accent);border-radius:16px;padding:14px 15px;margin-bottom:16px;display:flex;align-items:center;gap:12px;cursor:pointer;font-family:var(--font-body);">
-          <div style="width:42px;height:42px;border-radius:12px;background:var(--accent-dim);color:var(--accent);display:flex;align-items:center;justify-content:center;font-size:21px;flex-shrink:0;">📄</div>
-          <div style="flex:1;min-width:0;">
-            <div style="font-size:13px;font-weight:800;color:var(--text);margin-bottom:2px;">Use a document or photo</div>
-            <div style="font-size:11px;color:var(--muted);line-height:1.45;">Upload files, take pictures, or scan notes for summaries and talking points.</div>
-          </div>
-          <div aria-hidden="true" style="color:var(--accent);font-size:22px;">›</div>
-        </button>
 
         ${renderRelationshipSection()}
 
@@ -155,6 +150,8 @@ export function renderSession({ profile }) {
         </div>
 
         <div style="font-size:11px;color:var(--muted2);padding:0 2px;">Not seeing your situation above? Speak or type it — CommKit handles anything.</div>
+
+        ${renderSupportingDocsSection()}
       </div>
 
       <!-- Fixed CTA -->
@@ -162,6 +159,22 @@ export function renderSession({ profile }) {
         <button id="generateBtn" class="btn btn-primary btn-full" disabled>Generate my responses →</button>
       </div>
     </div>
+  `
+}
+
+function renderSupportingDocsSection() {
+  return `
+    <section style="background:linear-gradient(135deg,var(--s2),var(--s3));border:1.5px solid var(--border);border-top:2px solid var(--blue);border-radius:16px;padding:14px 15px;margin-top:16px;">
+      <div class="section-label" style="margin-bottom:8px;">Supporting docs</div>
+      <div style="font-size:13px;font-weight:800;color:var(--text);margin-bottom:4px;">Attach context for this conversation</div>
+      <div style="font-size:11px;color:var(--muted);line-height:1.5;margin-bottom:10px;">Optional. Add files, photos, screenshots, or pasted notes so responses are less generic.</div>
+      <label style="display:block;font-size:11px;font-weight:700;color:var(--muted);margin-bottom:6px;">Upload files or photos</label>
+      <input id="supportingFile" type="file" multiple accept=".txt,.md,.csv,.json,.log,.pdf,image/*,application/pdf" style="width:100%;font-size:12px;color:var(--muted);margin-bottom:10px;">
+      <label style="display:block;font-size:11px;font-weight:700;color:var(--muted);margin-bottom:6px;">Use camera / scan</label>
+      <input id="supportingCamera" type="file" accept="image/*" capture="environment" multiple style="width:100%;font-size:12px;color:var(--muted);margin-bottom:10px;">
+      <div id="supportingFileName" style="font-size:11px;color:var(--green);line-height:1.5;margin-bottom:10px;display:none;"></div>
+      <textarea id="supportingText" style="background:var(--s3);border:1.5px solid var(--border);border-radius:10px;padding:11px;min-height:74px;" placeholder="Paste key notes, findings, previous message, or details from a document..."></textarea>
+    </section>
   `
 }
 
@@ -231,7 +244,7 @@ function renderRelationshipSection() {
 
 // ── Bind ──────────────────────────────────────
 
-export function bindSession({ profile, onBack, onResource, onGenerate }) {
+export function bindSession({ profile, onBack, onGenerate }) {
   // Restore session state from profile
   sessionState = {
     role: profile?.role || '',
@@ -240,6 +253,10 @@ export function bindSession({ profile, onBack, onResource, onGenerate }) {
     recipientLabel: '',
     situation: '',
     situationText: '',
+    supportingDocs: {
+      documentText: '',
+      attachments: [],
+    },
     inputMethod: 'voice',
     tab: 'voice',
   }
@@ -247,10 +264,6 @@ export function bindSession({ profile, onBack, onResource, onGenerate }) {
   // Back button
   document.getElementById('sessionBack')?.addEventListener('click', () => {
     onBack?.()
-  })
-
-  document.getElementById('sessionResource')?.addEventListener('click', () => {
-    onResource?.()
   })
 
   // Edit profile
@@ -358,6 +371,18 @@ export function bindSession({ profile, onBack, onResource, onGenerate }) {
     checkCta()
   })
 
+  document.getElementById('supportingText')?.addEventListener('input', (event) => {
+    sessionState.supportingDocs.documentText = event.target.value.trim()
+  })
+
+  document.getElementById('supportingFile')?.addEventListener('change', async (event) => {
+    await handleSupportingFiles(event.target.files)
+  })
+
+  document.getElementById('supportingCamera')?.addEventListener('change', async (event) => {
+    await handleSupportingFiles(event.target.files)
+  })
+
   // Voice input
   setupVoice()
 
@@ -369,6 +394,7 @@ export function bindSession({ profile, onBack, onResource, onGenerate }) {
         situationText: sessionState.situationText || sessionState.situation,
         relationship: sessionState.relationship,
         recipientLabel: sessionState.recipientLabel,
+        supportingDocs: sessionState.supportingDocs,
         inputMethod:  sessionState.inputMethod,
       })
     }
@@ -376,6 +402,104 @@ export function bindSession({ profile, onBack, onResource, onGenerate }) {
 
   // Initial CTA check
   checkCta()
+}
+
+async function handleSupportingFiles(fileList) {
+  const files = Array.from(fileList || [])
+  if (!files.length) return
+
+  const textarea = document.getElementById('supportingText')
+  const fileName = document.getElementById('supportingFileName')
+
+  for (const file of files) {
+    if (isTextFile(file)) {
+      const text = await file.text()
+      const nextText = `${textarea?.value ? `${textarea.value}\n\n` : ''}--- ${file.name} ---\n${text}`
+      if (textarea) textarea.value = nextText
+      sessionState.supportingDocs.documentText = nextText.trim()
+      sessionState.supportingDocs.attachments.push({ name: file.name, mediaType: file.type || 'text/plain', kind: 'text' })
+      continue
+    }
+
+    if (isSupportedAttachment(file)) {
+      sessionState.supportingDocs.attachments.push(await createAttachment(file))
+      continue
+    }
+
+    sessionState.supportingDocs.attachments.push({
+      name: file.name,
+      mediaType: file.type || 'application/octet-stream',
+      kind: 'unsupported',
+      note: 'Paste text or export to PDF for best results.',
+    })
+  }
+
+  if (fileName) {
+    fileName.innerHTML = sessionState.supportingDocs.attachments
+      .map(file => `<div>${escapeHtml(file.kind === 'unsupported' ? 'Needs pasted text/PDF' : 'Attached')}: ${escapeHtml(file.name)}</div>`)
+      .join('')
+    fileName.style.display = 'block'
+  }
+}
+
+function isTextFile(file) {
+  return /\.(txt|md|csv|json|log)$/i.test(file.name) || file.type.startsWith('text/')
+}
+
+function isSupportedAttachment(file) {
+  return file.type.startsWith('image/') || file.type === 'application/pdf' || /\.pdf$/i.test(file.name)
+}
+
+async function createAttachment(file) {
+  const attachmentFile = file.type.startsWith('image/') ? await resizeImage(file) : file
+  const dataUrl = await fileToDataUrl(attachmentFile)
+  const [, base64 = ''] = dataUrl.split(',')
+
+  return {
+    name: file.name,
+    mediaType: attachmentFile.type || file.type || 'application/octet-stream',
+    kind: attachmentFile.type.startsWith('image/') ? 'image' : 'document',
+    data: base64,
+  }
+}
+
+function fileToDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(reader.result)
+    reader.onerror = reject
+    reader.readAsDataURL(file)
+  })
+}
+
+async function resizeImage(file) {
+  const dataUrl = await fileToDataUrl(file)
+  const image = await loadImage(dataUrl)
+  const maxSide = 1400
+  const scale = Math.min(1, maxSide / Math.max(image.width, image.height))
+
+  if (scale === 1 && file.size < 1200000) return file
+
+  const canvas = document.createElement('canvas')
+  canvas.width = Math.round(image.width * scale)
+  canvas.height = Math.round(image.height * scale)
+  const ctx = canvas.getContext('2d')
+  ctx.drawImage(image, 0, 0, canvas.width, canvas.height)
+
+  return new Promise(resolve => {
+    canvas.toBlob(blob => {
+      resolve(new File([blob], file.name.replace(/\.[^.]+$/, '.jpg'), { type: 'image/jpeg' }))
+    }, 'image/jpeg', 0.82)
+  })
+}
+
+function loadImage(src) {
+  return new Promise((resolve, reject) => {
+    const image = new Image()
+    image.onload = () => resolve(image)
+    image.onerror = reject
+    image.src = src
+  })
 }
 
 function switchTab(tab) {

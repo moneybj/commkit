@@ -35,6 +35,7 @@ export function renderResult({ result, situationLabel, profile, sessionData }) {
           ${profile?.style ? `<div class="tag style" style="cursor:default;">${escapeHtml(profile.style)}</div>` : ''}
           ${sessionData?.relationship ? `<div class="tag strength" style="cursor:default;">For: ${escapeHtml(sessionData.recipientLabel || getRelationshipLabel(sessionData.relationship))}</div>` : ''}
           ${sessionData?.inputMethod === 'voice' ? `<div class="tag strength" style="cursor:default;">🎤 Voice input</div>` : `<div class="tag style" style="cursor:default;">✏️ Typed</div>`}
+          ${hasSupportingDocs(sessionData?.supportingDocs) ? `<div class="tag growth" style="cursor:default;">📎 Supporting docs</div>` : ''}
           <div class="tag growth" style="cursor:default;">📍 Session ${profile?.sessionCount || 1}</div>
         </div>
       </div>
@@ -139,6 +140,13 @@ function getRelationshipLabel(relationship = '') {
     family: 'Family',
     friend: 'Friend',
   }[relationship] || relationship
+}
+
+function hasSupportingDocs(supportingDocs = {}) {
+  return Boolean(
+    String(supportingDocs.documentText || '').trim() ||
+    (supportingDocs.attachments || []).length
+  )
 }
 
 function renderMemoryNote(memory, recipientLabel) {
@@ -384,7 +392,6 @@ function renderNextActions() {
         <button id="nextHome" class="btn" style="flex:1;font-size:12px;">View profile</button>
       </div>
       <button id="nextCollateral" class="btn" style="width:100%;font-size:12px;margin-top:8px;border-color:var(--blue-border);background:var(--blue-dim);">Create summary, slides, talking points →</button>
-      <button id="nextResource" class="btn" style="width:100%;font-size:12px;margin-top:8px;">Upload docs for summary + talking points →</button>
     </div>
   `
 }
@@ -428,7 +435,7 @@ function renderFeedbackCard() {
 
 // ── Bind ──────────────────────────────────────
 
-export function bindResult({ onBack, onNewSession, onHome, onResource, onVersionUsed, onFormatChosen, onFrameworkOpened, onFeedback, onTagAccepted, onRefine, onCollateral }) {
+export function bindResult({ onBack, onNewSession, onHome, onVersionUsed, onFormatChosen, onFrameworkOpened, onFeedback, onTagAccepted, onRefine, onCollateral }) {
   // Back
   document.getElementById('resultBack')?.addEventListener('click', onBack)
 
@@ -556,7 +563,6 @@ export function bindResult({ onBack, onNewSession, onHome, onResource, onVersion
   document.getElementById('nextNewSession')?.addEventListener('click', onNewSession)
   document.getElementById('nextHome')?.addEventListener('click', onHome)
   document.getElementById('nextCollateral')?.addEventListener('click', onCollateral)
-  document.getElementById('nextResource')?.addEventListener('click', onResource)
 
   // Signal card
   document.getElementById('sigAccept')?.addEventListener('click', () => {

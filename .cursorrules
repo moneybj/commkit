@@ -1,0 +1,97 @@
+# CommKit — Cursor Agent Rules
+
+## First: read ARCHITECTURE.md
+Before making ANY multi-file change, adding ANY feature, or refactoring ANY module — read `ARCHITECTURE.md` in full. It contains the product goals, data flow, coding conventions, and a checklist for new features. This file is the single source of truth.
+
+---
+
+## What CommKit is
+A communication coaching PWA. Users speak or type a hard workplace situation. CommKit generates 3 calibrated responses backed by research. Under 60 seconds. Designed for the 4 minutes before a hard conversation.
+
+**Audience:** Individual contributors + frontline leaders who avoid hard conversations.
+
+---
+
+## Stack (non-negotiable)
+- Vanilla JS — no React, Vue, or any framework
+- Vite for bundling
+- Vercel serverless for API (api/generate.js)
+- Web Speech API for voice
+- localStorage for all persistence (via storage.js only)
+- Anthropic Claude API — never called directly from browser
+
+---
+
+## The 3 core mechanics
+1. **Signals** — behavioral data collected from usage → src/features/signals.js
+2. **Layers** — profile depth built from Signals, shown as tree rings → src/features/signals.js
+3. **Tags** — Instagram-style profile tags, X-able, suggested by Signals → src/utils/storage.js
+
+---
+
+## File ownership rules
+- localStorage → src/utils/storage.js ONLY — never touch localStorage anywhere else
+- API calls → api/generate.js + src/features/api.js — never call Anthropic from browser
+- Routing → src/main.js — all screen transitions live here
+- Design tokens → src/style.css — never hardcode hex values in components
+- Framework data → src/data/frameworks.js — single source for all 6 frameworks
+- Signal recording → src/features/signals.js — use SIGNAL_TYPES constants always
+
+---
+
+## Design tokens (always use these, never raw hex)
+--accent: #e8622a    CommKit orange, CTAs, active states
+--gold: #d4a030      Signals, notifications, frameworks
+--green: #4a9e6a     Success, privacy, confirmation
+--text: #f0ebe2      Primary text
+--muted: #7a7268     Labels, secondary text
+--bg: #0f0e0c        App background
+--s2: #1e1b18        Card backgrounds
+--border: #332e28    Subtle borders
+
+---
+
+## Tone rules
+- Never corporate. Never HR-speak.
+- "Say the right thing" not "optimize your communication strategy"
+- Users are anxious. Every word earns its place.
+- Framework reveals always end with the user as the hero, not the framework.
+
+---
+
+## Hard stops — never do these
+- NEVER call api.anthropic.com from browser JS
+- NEVER access localStorage directly — always use storage.js
+- NEVER add npm packages without strong justification
+- NEVER add steps to session 1 flow
+- NEVER show sign-in prompts before session 3
+- NEVER use any frontend framework
+- NEVER hardcode colors — use CSS custom properties
+- NEVER store sensitive content server-side
+- NEVER add blocking modals — use inline cards instead
+
+---
+
+## When adding a feature — checklist
+1. Read the relevant section of ARCHITECTURE.md
+2. Which screen? (one file per screen in src/screens/)
+3. Needs storage? Add to storage.js with a documented key
+4. Creates Signals? Add SIGNAL_TYPE constant, call recordSignal()
+5. Affects Layer progression? Update calculateLayerDepth()
+6. Is session 1 still frictionless? If not — reconsider
+7. Does it sound like CommKit? Check tone section
+
+---
+
+## Async pattern
+Always use async/await with try/catch. Never .then() chains. Never silent failures.
+
+---
+
+## Screen module pattern
+Every screen exports renderXxx(props) returning HTML string and bindXxx(callbacks) attaching listeners.
+
+---
+
+## Quick reference
+See ARCHITECTURE.md Section 15 for a full table of where every key function lives.

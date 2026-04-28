@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>CommKit — Offline</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,700;1,9..144,400&family=Cabinet+Grotesk:wght@400;600;700&display=swap');
+*{box-sizing:border-box;margin:0;padding:0;}
+body {
+  background: #0f0e0c;
+  color: #f0ebe2;
+  font-family: 'Cabinet Grotesk', sans-serif;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 24px;
+  text-align: center;
+}
+.logo {
+  font-family: 'Fraunces', serif;
+  font-size: 48px; font-weight: 700;
+  color: #e8622a; margin-bottom: 8px;
+  letter-spacing: -.02em;
+}
+.logo em { font-style: italic; }
+.icon { font-size: 64px; margin-bottom: 24px; }
+h1 {
+  font-family: 'Fraunces', serif;
+  font-size: 28px; font-weight: 700;
+  color: #f0ebe2; margin-bottom: 12px;
+  line-height: 1.2;
+}
+p {
+  font-size: 15px; color: #7a7268;
+  line-height: 1.7; max-width: 300px;
+  margin-bottom: 32px;
+}
+.tip {
+  background: #1e1b18;
+  border: 1px solid #332e28;
+  border-left: 3px solid #d4a030;
+  border-radius: 4px;
+  padding: 16px 18px;
+  text-align: left;
+  max-width: 320px;
+  margin-bottom: 32px;
+}
+.tip-label {
+  font-size: 10px; font-weight: 700;
+  text-transform: uppercase; letter-spacing: .14em;
+  color: #d4a030; margin-bottom: 8px;
+}
+.tip-text { font-size: 13px; color: #c0b8ac; line-height: 1.65; font-style: italic; }
+.retry {
+  background: #e8622a; color: #fff;
+  border: none; border-radius: 12px;
+  padding: 16px 32px; font-size: 15px; font-weight: 700;
+  cursor: pointer; font-family: 'Cabinet Grotesk', sans-serif;
+  transition: all .2s; width: 100%; max-width: 300px;
+}
+.retry:hover { background: #d4561e; }
+.retry:active { transform: scale(.98); }
+</style>
+</head>
+<body>
+  <div class="logo">Comm<em>Kit</em></div>
+  <div class="icon">📡</div>
+  <h1>You're offline right now</h1>
+  <p>CommKit needs a connection to generate responses. Your profile and tags are still saved on your device.</p>
+
+  <div class="tip">
+    <div class="tip-label">💡 While you wait</div>
+    <div class="tip-text">"The most important thing in communication is hearing what isn't said." — Peter Drucker</div>
+  </div>
+
+  <button class="retry" onclick="window.location.reload()">Try again →</button>
+</body>
+</html>

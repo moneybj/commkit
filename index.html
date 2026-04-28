@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+
+  <!-- PWA viewport — no zoom, full screen feel -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+
+  <!-- PWA meta -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="CommKit">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="theme-color" content="#e8622a">
+
+  <!-- SEO + sharing -->
+  <meta name="description" content="Say the right thing in hard conversations — in under a minute. Communication prompts for every professional.">
+  <meta property="og:title" content="CommKit — Say the Right Thing">
+  <meta property="og:description" content="Speak or type your situation. Get 3 calibrated responses backed by research. Voice input. On-device privacy.">
+  <meta property="og:type" content="website">
+  <meta property="og:image" content="/icons/icon-512.png">
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="CommKit">
+  <meta name="twitter:description" content="Say the right thing in hard conversations — in under a minute.">
+
+  <!-- PWA manifest + icons -->
+  <link rel="manifest" href="/manifest.json">
+  <link rel="apple-touch-icon" href="/icons/icon-192.png">
+  <link rel="apple-touch-icon" sizes="152x152" href="/icons/icon-152.png">
+  <link rel="apple-touch-icon" sizes="144x144" href="/icons/icon-144.png">
+  <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png">
+  <link rel="icon" type="image/png" sizes="96x96" href="/icons/icon-96.png">
+
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,500;0,9..144,700;1,9..144,400;1,9..144,600&family=Cabinet+Grotesk:wght@300;400;500;700;800&display=swap" rel="stylesheet">
+
+  <title>CommKit — Say the Right Thing</title>
+
+  <!-- Plausible analytics (privacy-friendly, loaded only if domain is set) -->
+  <script>
+    const domain = '__VITE_PLAUSIBLE_DOMAIN__';
+    if (domain && domain !== '__VITE_PLAUSIBLE_DOMAIN__') {
+      const s = document.createElement('script');
+      s.defer = true;
+      s.dataset.domain = domain;
+      s.src = 'https://plausible.io/js/script.js';
+      document.head.appendChild(s);
+    }
+  </script>
+</head>
+<body>
+
+  <!-- App mounts here -->
+  <div id="app"></div>
+
+  <!-- Entry point -->
+  <script type="module" src="/src/main.js"></script>
+
+</body>
+</html>

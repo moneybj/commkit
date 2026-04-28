@@ -1,0 +1,20 @@
+{
+  "name": "commkit",
+  "version": "1.0.0-beta",
+  "description": "Say the right thing — every time. Communication prompts for every professional.",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "lint": "eslint src --ext .js"
+  },
+  "devDependencies": {
+    "vite": "^5.0.0",
+    "eslint": "^8.0.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

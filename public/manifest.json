@@ -1,0 +1,88 @@
+{
+  "name": "CommKit — Say the Right Thing",
+  "short_name": "CommKit",
+  "description": "Communication prompts for every professional. Say the right thing in hard conversations — in under a minute.",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0f0e0c",
+  "theme_color": "#e8622a",
+  "categories": ["productivity", "business", "education"],
+  "icons": [
+    {
+      "src": "icons/icon-72.png",
+      "sizes": "72x72",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "icons/icon-96.png",
+      "sizes": "96x96",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "icons/icon-128.png",
+      "sizes": "128x128",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "icons/icon-144.png",
+      "sizes": "144x144",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "icons/icon-152.png",
+      "sizes": "152x152",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "icons/icon-384.png",
+      "sizes": "384x384",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "screenshots": [
+    {
+      "src": "screenshots/home.png",
+      "sizes": "390x844",
+      "type": "image/png",
+      "form_factor": "narrow",
+      "label": "CommKit home screen"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "New Conversation",
+      "short_name": "New",
+      "description": "Start a new communication prompt",
+      "url": "/?action=new",
+      "icons": [{"src": "icons/icon-96.png", "sizes": "96x96"}]
+    },
+    {
+      "name": "Framework Library",
+      "short_name": "Library",
+      "description": "Browse communication frameworks",
+      "url": "/frameworks.html",
+      "icons": [{"src": "icons/icon-96.png", "sizes": "96x96"}]
+    }
+  ],
+  "prefer_related_applications": false,
+  "related_applications": []
+}
